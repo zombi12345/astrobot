@@ -2,6 +2,7 @@ import asyncio
 import signal
 import sys
 import logging
+import threading
 from loader import bot, dp, setup_bot, shutdown_bot
 from scheduler import start_scheduler
 
@@ -43,5 +44,23 @@ async def main():
     finally:
         await shutdown_bot()
 
-if __name__ == '__main__':
-    asyncio.run(main())
+def run_bot():
+    """Запускает бота в отдельном потоке с собственным event loop"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
+
+# Точка входа для Render - запускаем Flask + бот
+if __name__ == "__main__":
+    # Запускаем Flask в отдельном потоке
+    from webhook_bot import app
+    import os
+    
+    # Запускаем бота в отдельном потоке
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    logger.info("✅ Бот запущен в фоновом потоке")
+    
+    # Запускаем Flask сервер (будет слушать порт)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
