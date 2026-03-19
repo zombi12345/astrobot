@@ -1,5 +1,5 @@
 --only-binary :all:
-aiogram>=3.4.0
+aiogram
 openai==1.6.1
 python-dotenv==1.0.0
 aiohttp
