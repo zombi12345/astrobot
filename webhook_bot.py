@@ -11,5 +11,3 @@ def health():
 @app.route('/')
 def home():
     return 'Bot is running!', 200
-
-# В этом файле больше ничего не нужно
