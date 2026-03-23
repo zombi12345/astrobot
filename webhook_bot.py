@@ -19,10 +19,30 @@ def home():
     return 'Bot is running!', 200
 
 def run_bot():
-    """Запускает бота в отдельном ПРОЦЕССЕ (не в потоке)"""
+    """Запускает бота в отдельном процессе"""
     import asyncio
     from loader import bot, dp, setup_bot
     from scheduler import start_scheduler
+    
+    # Импортируем все роутеры
+    from handlers.start import router as start_router
+    from handlers.ai_handler import router as ai_router
+    from handlers.natal import router as natal_router
+    from handlers.admin import router as admin_router
+    from handlers.horoscope import router as horoscope_router
+    from handlers.compatibility import router as compatibility_router
+    from handlers.profile import router as profile_router
+    from handlers.pdf_handler import router as pdf_router
+    
+    # Подключаем роутеры
+    dp.include_router(start_router)
+    dp.include_router(ai_router)
+    dp.include_router(natal_router)
+    dp.include_router(admin_router)
+    dp.include_router(horoscope_router)
+    dp.include_router(compatibility_router)
+    dp.include_router(profile_router)
+    dp.include_router(pdf_router)
     
     logger.info("🚀 Запуск бота в отдельном процессе...")
     
