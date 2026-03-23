@@ -20,7 +20,16 @@ def home():
 
 def run_bot():
     """Запускает бота в отдельном процессе"""
+    # ВСЕ ИМПОРТЫ ТОЛЬКО ВНУТРИ!
     import asyncio
+    import logging
+    import sys
+    import os
+    
+    # Настраиваем логирование для дочернего процесса
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+    
     from loader import bot, dp, setup_bot
     from scheduler import start_scheduler
     
@@ -65,9 +74,13 @@ def run_bot():
 
 if __name__ == "__main__":
     # Запускаем бота в отдельном процессе
-    bot_process = multiprocessing.Process(target=run_bot, daemon=True)
+    bot_process = multiprocessing.Process(target=run_bot, daemon=False)
     bot_process.start()
     logger.info("✅ Бот запущен в отдельном процессе")
+    
+    # Даем боту время на инициализацию
+    import time
+    time.sleep(2)
     
     # Запускаем Flask сервер
     port = int(os.environ.get('PORT', 10000))
