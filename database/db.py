@@ -65,7 +65,21 @@ class UserDB:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('UPDATE users SET birth_date = ?, birth_time = ?, birth_place = ? WHERE user_id = ?', (birth_date, birth_time, birth_place, user_id))
             await db.commit()
-    
+    @staticmethod
+    async def get_stats():
+        """Возвращает статистику по пользователям"""
+        async with aiosqlite.connect(DB_PATH) as db:
+            cur = await db.execute("SELECT COUNT(*) FROM users")
+            total = (await cur.fetchone())[0]
+        
+            cur = await db.execute("SELECT COUNT(*) FROM users WHERE is_paid = 1")
+            paid = (await cur.fetchone())[0]
+        
+            return {
+                'total_users': total,
+                'paid_users': paid,
+                'free_users': total - paid
+        }
     # Добавляем этот метод
     @staticmethod
     async def log_request(user_id, request_type, question, response):
