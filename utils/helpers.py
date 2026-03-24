@@ -1,4 +1,3 @@
-# utils/helpers.py
 def md2_escape(text: str) -> str:
     """Экранирование для MarkdownV2"""
     replacements = {
