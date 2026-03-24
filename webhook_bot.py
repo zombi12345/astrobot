@@ -20,20 +20,12 @@ def home():
 
 def run_bot():
     """Запускает бота в отдельном процессе"""
-    # ВСЕ ИМПОРТЫ ТОЛЬКО ВНУТРИ!
     import asyncio
     import logging
-    import sys
-    import os
-    
-    # Настраиваем логирование для дочернего процесса
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__)
-    
     from loader import bot, dp, setup_bot
     from scheduler import start_scheduler
     
-    # Импортируем все роутеры
+    # Импортируем ВСЕ роутеры
     from handlers.start import router as start_router
     from handlers.ai_handler import router as ai_router
     from handlers.natal import router as natal_router
@@ -43,7 +35,7 @@ def run_bot():
     from handlers.profile import router as profile_router
     from handlers.pdf_handler import router as pdf_router
     
-    # Подключаем роутеры
+    # Подключаем ВСЕ роутеры
     dp.include_router(start_router)
     dp.include_router(ai_router)
     dp.include_router(natal_router)
@@ -54,6 +46,7 @@ def run_bot():
     dp.include_router(pdf_router)
     
     logger.info("🚀 Запуск бота в отдельном процессе...")
+    logger.info(f"Подключено роутеров: {len(dp._routers)}")
     
     async def start_bot():
         try:
