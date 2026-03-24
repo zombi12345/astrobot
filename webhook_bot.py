@@ -2,11 +2,9 @@ import os
 import logging
 from flask import Flask, request
 import asyncio
-import threading
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
-from config import BOT_TOKEN, WEBHOOK_URL
-from loader import setup_bot
+from config import BOT_TOKEN
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -50,8 +48,9 @@ def home():
 def health():
     return 'OK', 200
 
-async def on_startup():
+async def setup_webhook():
     """Настройка веб-хука при запуске"""
+    from loader import setup_bot
     await setup_bot()
     webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'https://astrobot-spui.onrender.com')}/webhook"
     await bot.set_webhook(webhook_url)
@@ -63,10 +62,10 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, debug=False)
 
 if __name__ == "__main__":
-    # Запускаем настройку веб-хука в фоне
+    # Настраиваем веб-хук
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(on_startup())
+    loop.run_until_complete(setup_webhook())
     
     # Запускаем Flask
     run_flask()
