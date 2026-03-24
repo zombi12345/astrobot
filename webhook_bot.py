@@ -21,17 +21,15 @@ def run_bot():
     from loader import bot, dp, setup_bot
     from scheduler import start_scheduler
     
-    # Импортируем все роутеры
     from handlers.start import router as start_router
     from handlers.ai_handler import router as ai_router
     from handlers.natal import router as natal_router
-    from handlers.admin import router as admin_router
+    from handlers.admin_simple import router as admin_router
     from handlers.horoscope import router as horoscope_router
     from handlers.compatibility import router as compatibility_router
     from handlers.profile import router as profile_router
     from handlers.pdf_handler import router as pdf_router
     
-    # Подключаем все роутеры
     dp.include_router(start_router)
     dp.include_router(ai_router)
     dp.include_router(natal_router)
@@ -53,7 +51,6 @@ def run_bot():
     asyncio.run(start())
 
 if __name__ == "__main__":
-    # Запускаем бота в отдельном процессе
     bot_process = multiprocessing.Process(target=run_bot)
     bot_process.start()
     logger.info("Бот запущен в отдельном процессе")
@@ -61,6 +58,5 @@ if __name__ == "__main__":
     import time
     time.sleep(2)
     
-    # Запускаем Flask
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
