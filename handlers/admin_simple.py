@@ -7,18 +7,16 @@ from datetime import datetime
 import logging
 
 router = Router()
-logger = logging.getLogger(__name__)
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMINS
 
-# Простое главное меню
 async def show_admin_panel(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats_simple")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")]
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
     ])
-    await message.answer("👑 Админ-панель", reply_markup=keyboard)
+    await message.answer("👑 **Админ-панель**", reply_markup=keyboard, parse_mode="Markdown")
 
 @router.message(Command("admin"))
 async def admin_command(message: Message):
@@ -35,7 +33,7 @@ async def admin_stats_simple(callback: CallbackQuery):
     
     stats = await UserDB.get_stats()
     
-    text = f"""📊 Статистика
+    text = f"""📊 **Статистика**
 
 👥 Всего: {stats['total_users']}
 💎 Премиум: {stats['paid_users']}
@@ -47,7 +45,7 @@ async def admin_stats_simple(callback: CallbackQuery):
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back_simple")]
     ])
     
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 @router.callback_query(F.data == "admin_back_simple")
 async def admin_back_simple(callback: CallbackQuery):
