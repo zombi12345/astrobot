@@ -3,11 +3,9 @@ import logging
 import multiprocessing
 from flask import Flask
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask приложение
 app = Flask(__name__)
 
 @app.route('/health')
@@ -19,13 +17,11 @@ def home():
     return 'Bot is running!', 200
 
 def run_bot():
-    """Запускает бота в отдельном процессе"""
     import asyncio
-    import logging
     from loader import bot, dp, setup_bot
     from scheduler import start_scheduler
     
-    # Импортируем ВСЕ роутеры
+    # Импорт ВСЕХ роутеров
     from handlers.start import router as start_router
     from handlers.ai_handler import router as ai_router
     from handlers.natal import router as natal_router
@@ -35,7 +31,7 @@ def run_bot():
     from handlers.profile import router as profile_router
     from handlers.pdf_handler import router as pdf_router
     
-    # Подключаем ВСЕ роутеры
+    # Подключение ВСЕХ роутеров
     dp.include_router(start_router)
     dp.include_router(ai_router)
     dp.include_router(natal_router)
@@ -45,37 +41,23 @@ def run_bot():
     dp.include_router(profile_router)
     dp.include_router(pdf_router)
     
-    logger.info("🚀 Запуск бота в отдельном процессе...")
+    logger.info("Бот запускается...")
     logger.info(f"Подключено роутеров: {len(dp._routers)}")
     
-    async def start_bot():
-        try:
-            await setup_bot()
-            logger.info("✅ Бот инициализирован")
-            
-            asyncio.create_task(start_scheduler(bot))
-            logger.info("✅ Планировщик запущен")
-            
-            logger.info("🔄 Запуск polling...")
-            await dp.start_polling(bot, skip_updates=True)
-        except Exception as e:
-            logger.error(f"❌ Ошибка в боте: {e}")
-        finally:
-            await bot.session.close()
+    async def start():
+        await setup_bot()
+        asyncio.create_task(start_scheduler(bot))
+        await dp.start_polling(bot, skip_updates=True)
     
-    asyncio.run(start_bot())
+    asyncio.run(start())
 
 if __name__ == "__main__":
-    # Запускаем бота в отдельном процессе
-    bot_process = multiprocessing.Process(target=run_bot, daemon=False)
+    bot_process = multiprocessing.Process(target=run_bot)
     bot_process.start()
-    logger.info("✅ Бот запущен в отдельном процессе")
+    logger.info("Бот запущен в отдельном процессе")
     
-    # Даем боту время на инициализацию
     import time
     time.sleep(2)
     
-    # Запускаем Flask сервер
     port = int(os.environ.get('PORT', 10000))
-    logger.info(f"🌐 Запуск Flask сервера на порту {port}")
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=port, debug=False)

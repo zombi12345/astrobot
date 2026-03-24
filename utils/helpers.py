@@ -1,5 +1,4 @@
 def md2_escape(text: str) -> str:
-    """Экранирование для MarkdownV2"""
     replacements = {
         '_': '\\_', '*': '\\*', '[': '\\[', ']': '\\]',
         '(': '\\(', ')': '\\)', '~': '\\~', '`': '\\`',
@@ -12,5 +11,4 @@ def md2_escape(text: str) -> str:
     return text
 
 def safe_text(text: str) -> str:
-    """Безопасный текст без markdown"""
     return text.replace('*', '').replace('_', '').replace('`', '')
