@@ -1,23 +1,26 @@
-import asyncio
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
 from config import ADMINS
 from database.db import UserDB
 from datetime import datetime, timedelta
 import logging
 import asyncio
+import os
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 # Состояния для FSM
-class AdminStates:
-    waiting_broadcast = "waiting_broadcast"
-    waiting_user_id = "waiting_user_id"
-    waiting_subscription_days = "waiting_subscription_days"
-    waiting_search = "waiting_search"
+class AdminStates(StatesGroup):
+    waiting_broadcast = State()
+    waiting_user_id = State()
+    waiting_subscription_days = State()
+    waiting_search = State()
+
+# ==================== ГЛАВНОЕ МЕНЮ ====================
 
 async def show_admin_panel(target, edit=True):
     """Показывает главное меню админ-панели"""
@@ -63,25 +66,17 @@ async def admin_stats(callback: CallbackQuery):
     
     stats = await UserDB.get_stats()
     
-    # Дополнительная статистика
     from database.db import DB_PATH
     import aiosqlite
     
     async with aiosqlite.connect(DB_PATH) as db:
-        # Всего запросов
         cur = await db.execute("SELECT COUNT(*) FROM requests")
         total_requests = (await cur.fetchone())[0]
         
-        # Запросов за сегодня
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM requests WHERE created_at > datetime('now', 'start of day')"
-        )
+        cur = await db.execute("SELECT COUNT(*) FROM requests WHERE created_at > datetime('now', 'start of day')")
         today_requests = (await cur.fetchone())[0]
         
-        # Пользователей за последние 7 дней
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM users WHERE created_at > datetime('now', '-7 days')"
-        )
+        cur = await db.execute("SELECT COUNT(*) FROM users WHERE created_at > datetime('now', '-7 days')")
         new_last_week = (await cur.fetchone())[0]
     
     text = f"""📊 **СТАТИСТИКА**
@@ -108,7 +103,6 @@ async def admin_stats(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_users")
 async def admin_users(callback: CallbackQuery):
-    """Список пользователей"""
     if callback.from_user.id not in ADMINS:
         return
     
@@ -143,7 +137,6 @@ async def admin_users(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_search_user")
 async def admin_search_user(callback: CallbackQuery, state: FSMContext):
-    """Поиск пользователя по ID"""
     if callback.from_user.id not in ADMINS:
         return
     
@@ -155,7 +148,6 @@ async def admin_search_user(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_search)
 async def process_user_search(message: Message, state: FSMContext):
-    """Обработка поиска пользователя"""
     if message.from_user.id not in ADMINS:
         return
     
@@ -196,7 +188,6 @@ async def process_user_search(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "admin_subs")
 async def admin_subs(callback: CallbackQuery):
-    """Управление подписками"""
     if callback.from_user.id not in ADMINS:
         return
     
@@ -239,7 +230,6 @@ async def admin_subs(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_give_sub")
 async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
-    """Начало выдачи подписки"""
     if callback.from_user.id not in ADMINS:
         return
     
@@ -251,7 +241,6 @@ async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_user_id)
 async def process_user_id_for_sub(message: Message, state: FSMContext):
-    """Получение ID пользователя для подписки"""
     if message.from_user.id not in ADMINS:
         return
     
@@ -277,8 +266,7 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
         ])
         
         await message.answer(
-            f"👤 Пользователь: {user_data.get('first_name', user_id)}\n\n"
-            "Выберите срок подписки:",
+            f"👤 Пользователь: {user_data.get('first_name', user_id)}\n\nВыберите срок подписки:",
             reply_markup=keyboard
         )
         
@@ -287,7 +275,6 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("sub_"))
 async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора срока подписки"""
     days_map = {"sub_7": 7, "sub_30": 30, "sub_90": 90, "sub_365": 365}
     days = days_map.get(callback.data, 7)
     
@@ -296,7 +283,6 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
     
     if user_id:
         await UserDB.set_subscription(user_id, days)
-        
         end_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d')
         
         await callback.message.edit_text(
@@ -306,7 +292,6 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
             f"🗓️ Действует до: {end_date}"
         )
         
-        # Уведомляем пользователя
         from loader import bot
         try:
             await bot.send_message(
@@ -325,7 +310,6 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("add_sub_"))
 async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
-    """Добавление подписки из карточки пользователя"""
     if callback.from_user.id not in ADMINS:
         return
     
@@ -350,7 +334,6 @@ async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "admin_broadcast")
 async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
-    """Начало рассылки"""
     if callback.from_user.id not in ADMINS:
         return
     
@@ -365,7 +348,6 @@ async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.waiting_broadcast)
 async def process_broadcast(message: Message, state: FSMContext):
-    """Отправка рассылки"""
     if message.from_user.id not in ADMINS:
         return
     
@@ -378,7 +360,6 @@ async def process_broadcast(message: Message, state: FSMContext):
     
     await state.clear()
     
-    # Получаем всех пользователей
     from database.db import DB_PATH
     import aiosqlite
     
@@ -398,9 +379,8 @@ async def process_broadcast(message: Message, state: FSMContext):
             await bot.send_message(user_id, text, parse_mode="Markdown")
             success += 1
             await asyncio.sleep(0.05)
-        except Exception as e:
+        except:
             fail += 1
-            logger.error(f"Ошибка отправки {user_id}: {e}")
     
     await msg.edit_text(
         f"✅ **Рассылка завершена**\n\n"
@@ -415,11 +395,9 @@ async def process_broadcast(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "admin_export")
 async def admin_export(callback: CallbackQuery):
-    """Экспорт базы данных"""
     if callback.from_user.id not in ADMINS:
         return
     
-    import os
     from database.db import DB_PATH
     
     if not os.path.exists(DB_PATH):
@@ -443,5 +421,4 @@ async def admin_export(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery):
-    """Возврат в админ-панель"""
     await show_admin_panel(callback)
