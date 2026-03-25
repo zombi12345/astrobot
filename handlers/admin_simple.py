@@ -7,42 +7,53 @@ from datetime import datetime
 
 router = Router()
 
-async def show_admin_panel(message: Message):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats_simple")],
-        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
-    ])
-    await message.answer("👑 Админ-панель", reply_markup=keyboard)
-
 @router.message(Command("admin"))
 async def admin_command(message: Message):
+    """Простая команда /admin"""
     if message.from_user.id not in ADMINS:
-        await message.answer("❌ Нет доступа")
+        await message.answer("❌ У вас нет доступа к админ-панели")
         return
-    await show_admin_panel(message)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
+    ])
+    
+    await message.answer("👑 **Админ-панель**\n\nВыберите действие:", 
+                         reply_markup=keyboard, 
+                         parse_mode="Markdown")
 
-@router.callback_query(F.data == "admin_stats_simple")
-async def admin_stats_simple(callback: CallbackQuery):
+@router.callback_query(F.data == "admin_stats")
+async def admin_stats(callback: CallbackQuery):
+    """Показывает статистику"""
     if callback.from_user.id not in ADMINS:
         await callback.answer("Нет доступа")
         return
     
     stats = await UserDB.get_stats()
     
-    text = f"""📊 Статистика
+    text = f"""📊 **Статистика**
 
-👥 Всего: {stats['total_users']}
+👥 Всего пользователей: {stats['total_users']}
 💎 Премиум: {stats['paid_users']}
 🆓 Бесплатных: {stats['free_users']}
 
 📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back_simple")]
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
     ])
     
-    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
 
-@router.callback_query(F.data == "admin_back_simple")
-async def admin_back_simple(callback: CallbackQuery):
-    await show_admin_panel(callback.message)
+@router.callback_query(F.data == "admin_back")
+async def admin_back(callback: CallbackQuery):
+    """Возврат в админ-панель"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
+    ])
+    
+    await callback.message.edit_text("👑 **Админ-панель**\n\nВыберите действие:", 
+                                     reply_markup=keyboard, 
+                                     parse_mode="Markdown")
