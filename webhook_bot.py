@@ -48,9 +48,21 @@ def run_bot():
 
     async def start():
         await setup_bot()
-        # Принудительно удаляем webhook и сбрасываем старые обновления
+        
+        # Принудительно удаляем webhook и сбрасываем все обновления
         await bot.delete_webhook(drop_pending_updates=True)
-        await asyncio.sleep(1)  # даём время на завершение старых сессий
+        logger.info("Webhook удалён, ожидаем завершения старых сессий...")
+        
+        # Ждём 7 секунд, чтобы Telegram успел завершить старую сессию
+        await asyncio.sleep(7)
+        
+        # Дополнительная проверка: убеждаемся, что веб-хук действительно удалён
+        webhook_info = await bot.get_webhook_info()
+        if webhook_info.url:
+            logger.warning(f"Webhook всё ещё активен: {webhook_info.url}, повторное удаление...")
+            await bot.delete_webhook(drop_pending_updates=True)
+            await asyncio.sleep(3)
+        
         asyncio.create_task(start_scheduler(bot))
         await dp.start_polling(bot, skip_updates=True)
 
