@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import asyncio
 from flask import Flask
 from loader import bot, dp, setup_bot
 from scheduler import start_scheduler
@@ -9,7 +10,7 @@ from scheduler import start_scheduler
 from handlers.start import router as start_router
 from handlers.ai_handler import router as ai_router
 from handlers.natal import router as natal_router
-from handlers.admin_simple import router as admin_router      # <-- ДОБАВЬТЕ ЭТУ СТРОКУ
+from handlers.admin_simple import router as admin_router
 from handlers.horoscope import router as horoscope_router
 from handlers.compatibility import router as compatibility_router
 from handlers.profile import router as profile_router
@@ -33,11 +34,11 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
 
 def run_bot():
-    # Подключаем ВСЕ роутеры
+    # Подключаем все роутеры
     dp.include_router(start_router)
     dp.include_router(ai_router)
     dp.include_router(natal_router)
-    dp.include_router(admin_router)          # <-- ДОБАВЬТЕ ЭТУ СТРОКУ
+    dp.include_router(admin_router)
     dp.include_router(horoscope_router)
     dp.include_router(compatibility_router)
     dp.include_router(profile_router)
@@ -45,9 +46,11 @@ def run_bot():
 
     logger.info("Запуск polling...")
 
-    import asyncio
     async def start():
         await setup_bot()
+        # Принудительно удаляем webhook и сбрасываем старые обновления
+        await bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(1)  # даём время на завершение старых сессий
         asyncio.create_task(start_scheduler(bot))
         await dp.start_polling(bot, skip_updates=True)
 
