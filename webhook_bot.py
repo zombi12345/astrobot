@@ -1,10 +1,10 @@
 import os
 import logging
+import asyncio
 from flask import Flask, request
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Update
 from config import BOT_TOKEN
-import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,10 +35,22 @@ dp.include_router(profile_router)
 dp.include_router(pdf_router)
 
 @app.route('/webhook', methods=['POST'])
-async def webhook():
-    update = Update.model_validate(await request.json, context={'bot': bot})
-    await dp.feed_update(bot, update)
-    return 'OK', 200
+def webhook():
+    """Синхронный обработчик веб-хука"""
+    try:
+        data = request.get_json()
+        update = Update.model_validate(data, context={'bot': bot})
+        
+        # Запускаем асинхронную обработку в цикле событий
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(dp.feed_update(bot, update))
+        loop.close()
+        
+        return 'OK', 200
+    except Exception as e:
+        logger.error(f"Ошибка в веб-хуке: {e}")
+        return 'Error', 500
 
 @app.route('/health')
 def health():
