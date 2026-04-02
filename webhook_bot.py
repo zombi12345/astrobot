@@ -2,7 +2,7 @@ import os
 import logging
 import asyncio
 from flask import Flask, request
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from config import BOT_TOKEN
 
@@ -34,18 +34,20 @@ dp.include_router(compatibility_router)
 dp.include_router(profile_router)
 dp.include_router(pdf_router)
 
+# Глобальный цикл событий
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Синхронный обработчик веб-хука"""
+    """Обработчик веб-хука"""
     try:
         data = request.get_json()
         update = Update.model_validate(data, context={'bot': bot})
         
-        # Запускаем асинхронную обработку в цикле событий
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(dp.feed_update(bot, update))
-        loop.close()
+        # Запускаем обработку в существующем цикле
+        future = asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), loop)
+        future.result(timeout=10)  # Ждём результат до 10 секунд
         
         return 'OK', 200
     except Exception as e:
@@ -66,10 +68,18 @@ async def setup_webhook():
     await bot.set_webhook(webhook_url)
     logger.info(f"Webhook установлен: {webhook_url}")
 
+def run_loop():
+    """Запускает цикл событий в отдельном потоке"""
+    loop.run_forever()
+
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # Настраиваем веб-хук
     loop.run_until_complete(setup_webhook())
     
+    # Запускаем цикл событий в фоне
+    import threading
+    threading.Thread(target=run_loop, daemon=True).start()
+    
+    # Запускаем Flask
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
