@@ -1,0 +1,9 @@
+--only-binary :all:
+aiogram
+openai==1.6.1
+python-dotenv==1.0.0
+aiohttp
+aiosqlite==0.19.0
+reportlab==4.0.9
+flask>=2.3.0
+matplotlib==3.9.2

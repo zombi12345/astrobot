@@ -1,0 +1,9 @@
+Как восстановить базу (если понадобится)
+В Render Dashboard → Shell для astrobot
+
+Выполните:
+
+bash
+cd /opt/render/project/src
+ls -la backups/  # посмотреть список бэкапов
+cp backups/astro_backup_20260323_030000.db astro.db  # восстановить
