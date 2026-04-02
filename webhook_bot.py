@@ -1,15 +1,44 @@
 import os
 import logging
-import threading
+from flask import Flask, request
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import Update
+from config import BOT_TOKEN
 import asyncio
-from flask import Flask
-from loader import bot, dp, setup_bot
-from scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+# Импорт всех роутеров
+from handlers.start import router as start_router
+from handlers.ai_handler import router as ai_router
+from handlers.natal import router as natal_router
+from handlers.admin_simple import router as admin_router
+from handlers.horoscope import router as horoscope_router
+from handlers.compatibility import router as compatibility_router
+from handlers.profile import router as profile_router
+from handlers.pdf_handler import router as pdf_router
+
+# Подключение всех роутеров
+dp.include_router(start_router)
+dp.include_router(ai_router)
+dp.include_router(natal_router)
+dp.include_router(admin_router)
+dp.include_router(horoscope_router)
+dp.include_router(compatibility_router)
+dp.include_router(profile_router)
+dp.include_router(pdf_router)
+
+@app.route('/webhook', methods=['POST'])
+async def webhook():
+    update = Update.model_validate(await request.json, context={'bot': bot})
+    await dp.feed_update(bot, update)
+    return 'OK', 200
 
 @app.route('/health')
 def health():
@@ -19,43 +48,16 @@ def health():
 def home():
     return 'Bot is running!', 200
 
-def run_flask():
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
-
-def run_bot():
-    from handlers.start import router as start_router
-    from handlers.ai_handler import router as ai_router
-    from handlers.natal import router as natal_router
-    from handlers.admin_simple import router as admin_router
-    from handlers.horoscope import router as horoscope_router
-    from handlers.compatibility import router as compatibility_router
-    from handlers.profile import router as profile_router
-    from handlers.pdf_handler import router as pdf_router
-
-    dp.include_router(start_router)
-    dp.include_router(ai_router)
-    dp.include_router(natal_router)
-    dp.include_router(admin_router)
-    dp.include_router(horoscope_router)
-    dp.include_router(compatibility_router)
-    dp.include_router(profile_router)
-    dp.include_router(pdf_router)
-
-    logger.info("Запуск polling...")
-
-    async def start():
-        await setup_bot()
-        # Принудительно удаляем веб-хук и сбрасываем обновления
-        await bot.delete_webhook(drop_pending_updates=True)
-        logger.info("Webhook удалён")
-        # Ждём 3 секунды для завершения старых сессий
-        await asyncio.sleep(3)
-        asyncio.create_task(start_scheduler(bot))
-        await dp.start_polling(bot)
-
-    asyncio.run(start())
+async def setup_webhook():
+    webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'https://astrobot-spui.onrender.com')}/webhook"
+    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.set_webhook(webhook_url)
+    logger.info(f"Webhook установлен: {webhook_url}")
 
 if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    run_bot()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(setup_webhook())
+    
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
