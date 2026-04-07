@@ -52,3 +52,10 @@ def create_natal_chart_report_pdf(self, data):
     
     c.save()
     return filename
+# ... весь ваш код класса ProfessionalPDFGenerator ...
+
+    def _draw_frame(self, c, width, height):
+        # ... код метода ...
+
+# Создаём глобальный экземпляр класса
+pdf_gen = ProfessionalPDFGenerator()  # <--- ЭТА СТРОКА НУЖНА!
