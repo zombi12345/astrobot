@@ -5,6 +5,7 @@ from flask import Flask, request
 from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from config import BOT_TOKEN
+from loader import setup_bot  # <--- ДОБАВЬТЕ ЭТОТ ИМПОРТ
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,9 +46,8 @@ def webhook():
         data = request.get_json()
         update = Update.model_validate(data, context={'bot': bot})
         
-        # Запускаем обработку в существующем цикле
         future = asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), loop)
-        future.result(timeout=10)  # Ждём результат до 10 секунд
+        future.result(timeout=10)
         
         return 'OK', 200
     except Exception as e:
@@ -63,6 +63,9 @@ def home():
     return 'Bot is running!', 200
 
 async def setup_webhook():
+    # ИНИЦИАЛИЗИРУЕМ БАЗУ ДАННЫХ
+    await setup_bot()  # <--- ЭТО ВАЖНО!
+    
     webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'https://astrobot-spui.onrender.com')}/webhook"
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(webhook_url)
@@ -73,7 +76,7 @@ def run_loop():
     loop.run_forever()
 
 if __name__ == "__main__":
-    # Настраиваем веб-хук
+    # Настраиваем веб-хук и инициализируем базу
     loop.run_until_complete(setup_webhook())
     
     # Запускаем цикл событий в фоне
