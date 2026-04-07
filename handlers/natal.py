@@ -1,10 +1,10 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message, FSInputFile
+from aiogram.types import CallbackQuery, Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from states import NatalChartStates
 from services.natal_service import natal_service
 from services.pdf_generator import pdf_gen
-from keyboards.main import natal_options_keyboard, main_menu_keyboard
+from keyboards.main import natal_options_keyboard, main_menu_keyboard, back_to_menu_keyboard
 from database.db import UserDB
 from utils import md2_escape
 import os
@@ -83,13 +83,13 @@ async def natal_finish(message: Message, state: FSMContext):
         # Генерируем SVG-схему натальной карты
         svg_path = natal_service.generate_svg_chart(chart_data)
         
-        # Отправляем SVG-изображение
+        # Отправляем SVG-схему как документ (Telegram не поддерживает SVG как фото)
         if svg_path and os.path.exists(svg_path):
-            with open(svg_path, 'rb') as f:
-                await message.answer_photo(
-                    f,
-                    caption="🔮 **Схема натальной карты**\n\nНа схеме показано расположение планет в момент вашего рождения."
-                )
+            svg_file = FSInputFile(svg_path)
+            await message.answer_document(
+                svg_file,
+                caption="🔮 **Схема натальной карты**\n\nНа схеме показано расположение планет в момент вашего рождения."
+            )
             os.remove(svg_path)
         
         # Генерируем текстовый отчёт
@@ -97,12 +97,6 @@ async def natal_finish(message: Message, state: FSMContext):
         
         # Отправляем текстовый отчёт
         await message.answer(report_text, parse_mode="Markdown")
-        
-        # Сохраняем данные о планетах для PDF
-        await state.update_data(planets=chart_data['planets'])
-        await state.update_data(houses=chart_data['houses'])
-        await state.update_data(sun_sign=chart_data['sun_sign'])
-        await state.update_data(ascendant=chart_data['ascendant'])
         
         # Предлагаем дальнейшие действия
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -123,7 +117,7 @@ async def natal_finish(message: Message, state: FSMContext):
 
 # Обработчик для PDF-отчёта из натальной карты
 @router.callback_query(F.data == "pdf_natal_from_chart")
-async def pdf_natal_from_chart(callback: CallbackQuery, state: FSMContext):
+async def pdf_natal_from_chart(callback: CallbackQuery):
     """Создаёт PDF-отчёт на основе уже рассчитанной натальной карты"""
     user_id = callback.from_user.id
     user_data = await UserDB.get_user(user_id)
@@ -140,7 +134,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery, state: FSMContext):
     processing_msg = await callback.message.edit_text("📄 **Создаю PDF-отчёт натальной карты...**\nЭто займёт несколько секунд.", parse_mode="Markdown")
     
     try:
-        # Создаём натальную карту (пересчитываем для синхронизации)
+        # Создаём натальную карту
         chart_data = natal_service.create_natal_chart(
             name=user_data.get('first_name', 'Пользователь'),
             birth_date=user_data['birth_date'],
