@@ -7,3 +7,4 @@ aiosqlite==0.19.0
 reportlab==4.0.9
 flask[async]>=2.3.0
 matplotlib==3.9.2
+vedastro>=0.1.0

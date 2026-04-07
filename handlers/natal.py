@@ -62,7 +62,7 @@ async def natal_finish(message: Message, state: FSMContext):
     processing_msg = await message.answer("🔮 **Создаю натальную карту...**\nЭто может занять несколько секунд.", parse_mode="Markdown")
 
     try:
-        # Создаём натальную карту
+        # Создаём натальную карту через VedAstro
         chart_data = natal_service.create_natal_chart(
             name=data['name'],
             birth_date=data['birth_date'],
@@ -80,10 +80,8 @@ async def natal_finish(message: Message, state: FSMContext):
         
         await processing_msg.delete()
         
-        # Генерируем SVG-схему натальной карты
+        # Генерируем SVG-схему
         svg_path = natal_service.generate_svg_chart(chart_data)
-        
-        # Отправляем SVG-схему как документ (Telegram не поддерживает SVG как фото)
         if svg_path and os.path.exists(svg_path):
             svg_file = FSInputFile(svg_path)
             await message.answer_document(
@@ -94,11 +92,9 @@ async def natal_finish(message: Message, state: FSMContext):
         
         # Генерируем текстовый отчёт
         report_text = natal_service.generate_report_text(chart_data)
-        
-        # Отправляем текстовый отчёт
         await message.answer(report_text, parse_mode="Markdown")
         
-        # Предлагаем дальнейшие действия
+        # Предлагаем PDF
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📄 Скачать PDF-отчёт", callback_data="pdf_natal_from_chart")],
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
@@ -115,10 +111,9 @@ async def natal_finish(message: Message, state: FSMContext):
         logger.error(f"Ошибка при создании натальной карты: {e}")
         await processing_msg.edit_text(f"❌ **Ошибка при создании натальной карты:**\n{str(e)}\n\nПожалуйста, проверьте правильность введённых данных.", parse_mode="Markdown")
 
-# Обработчик для PDF-отчёта из натальной карты
 @router.callback_query(F.data == "pdf_natal_from_chart")
 async def pdf_natal_from_chart(callback: CallbackQuery):
-    """Создаёт PDF-отчёт на основе уже рассчитанной натальной карты"""
+    """Создаёт PDF-отчёт на основе натальной карты"""
     user_id = callback.from_user.id
     user_data = await UserDB.get_user(user_id)
     
@@ -134,7 +129,6 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
     processing_msg = await callback.message.edit_text("📄 **Создаю PDF-отчёт натальной карты...**\nЭто займёт несколько секунд.", parse_mode="Markdown")
     
     try:
-        # Создаём натальную карту
         chart_data = natal_service.create_natal_chart(
             name=user_data.get('first_name', 'Пользователь'),
             birth_date=user_data['birth_date'],
@@ -142,7 +136,6 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
             birth_place=user_data.get('birth_place', 'Не указано')
         )
         
-        # Подготавливаем данные для PDF
         pdf_data = {
             'user_name': user_data.get('first_name', 'Пользователь'),
             'birth_date': user_data['birth_date'],
@@ -156,12 +149,10 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
             'houses': chart_data['houses']
         }
         
-        # Создаём PDF
         pdf_path = pdf_gen.create_natal_chart_report_pdf(pdf_data)
         
         await processing_msg.delete()
         
-        # Отправляем PDF
         pdf_file = FSInputFile(pdf_path)
         await callback.message.answer_document(
             pdf_file,
@@ -176,7 +167,6 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
             parse_mode="Markdown"
         )
         
-        # Удаляем временный файл
         os.remove(pdf_path)
         
     except Exception as e:
