@@ -54,8 +54,20 @@ def create_natal_chart_report_pdf(self, data):
     return filename
 # ... весь ваш код класса ProfessionalPDFGenerator ...
 
-    def _draw_frame(self, c, width, height):
-        # ... код метода ...
+   # ... (весь остальной код вашего класса ProfessionalPDFGenerator)
 
-# Создаём глобальный экземпляр класса
-pdf_gen = ProfessionalPDFGenerator()  # <--- ЭТА СТРОКА НУЖНА!
+    def _draw_frame(self, c, width, height):
+        """Рисует декоративную рамку"""
+        c.setStrokeColor(GOLD)
+        c.setLineWidth(2)
+        
+        # Внешняя рамка
+        c.rect(20, 20, width-40, height-40, stroke=1, fill=0)
+        
+        # Внутренняя рамка
+        c.setLineWidth(1)
+        c.setStrokeColor(LIGHT_GOLD)
+        c.rect(25, 25, width-50, height-50, stroke=1, fill=0)
+
+# Создаём глобальный экземпляр класса (НА НУЛЕВОМ УРОВНЕ ОТСТУПА!)
+pdf_gen = ProfessionalPDFGenerator()
