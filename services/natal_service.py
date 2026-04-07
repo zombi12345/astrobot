@@ -9,16 +9,66 @@ logger = logging.getLogger(__name__)
 
 class NatalService:
     CITY_COORDS = {
-        'минск': (53.9045, 27.5615), 'гомель': (52.4345, 30.9754),
-        'могилёв': (53.8945, 30.3314), 'витебск': (55.1848, 30.2016),
-        'гродно': (53.6694, 23.8131), 'брест': (52.0976, 23.7341),
-        'барановичи': (53.1333, 26.0167), 'москва': (55.7558, 37.6173),
-        'санкт-петербург': (59.9343, 30.3351), 'киев': (50.4501, 30.5234),
+        # Беларусь
+        'минск': (53.9045, 27.5615),
+        'гомель': (52.4345, 30.9754),
+        'могилёв': (53.8945, 30.3314),
+        'витебск': (55.1848, 30.2016),
+        'гродно': (53.6694, 23.8131),
+        'брест': (52.0976, 23.7341),
+        'барановичи': (53.1333, 26.0167),
+        'пинск': (52.1129, 26.1025),
+        'орша': (54.5154, 30.4028),
+        'мозырь': (52.0495, 29.2456),
+        'солигорск': (52.7833, 27.5333),
+        'новополоцк': (55.5333, 28.65),
+        'лида': (53.8833, 25.3),
+        'волковыск': (53.15, 24.4667),
+        'слоним': (53.0833, 25.3167),
+        # Россия
+        'москва': (55.7558, 37.6173),
+        'санкт-петербург': (59.9343, 30.3351),
+        'новосибирск': (55.0084, 82.9357),
+        'екатеринбург': (56.8389, 60.6057),
+        'казань': (55.7887, 49.1221),
+        'нижний новгород': (56.2965, 43.9361),
+        'самара': (53.1959, 50.1002),
+        'омск': (54.9885, 73.3242),
+        'челябинск': (55.1644, 61.4368),
+        'ростов-на-дону': (47.2357, 39.7015),
+        'уфа': (54.7388, 55.9721),
+        'волгоград': (48.708, 44.5133),
+        'пермь': (58.0105, 56.2294),
+        'красноярск': (56.0097, 92.7917),
+        'воронеж': (51.6605, 39.2003),
+        # Украина
+        'киев': (50.4501, 30.5234),
+        'харьков': (49.9935, 36.2304),
+        'одесса': (46.4825, 30.7233),
+        'днепр': (48.4647, 35.0462),
+        'донецк': (48.0159, 37.8029),
+        'львов': (49.8397, 24.0297),
+        'запорожье': (47.8388, 35.1396),
+        # Другие страны
+        'варшава': (52.2297, 21.0122),
+        'вильнюс': (54.6872, 25.2797),
+        'рига': (56.9496, 24.1052),
+        'таллин': (59.437, 24.7536),
+        'берлин': (52.52, 13.405),
+        'париж': (48.8566, 2.3522),
+        'лондон': (51.5074, -0.1278),
+        'нью-йорк': (40.7128, -74.006),
+        'лос-анджелес': (34.0522, -118.2437),
     }
     
     TIMEZONES = {
-        'минск': '+03:00', 'москва': '+03:00', 'санкт-петербург': '+03:00',
-        'киев': '+02:00', 'варшава': '+01:00', 'вильнюс': '+02:00',
+        'минск': '+03:00', 'гомель': '+03:00', 'могилёв': '+03:00', 'витебск': '+03:00',
+        'гродно': '+03:00', 'брест': '+03:00', 'барановичи': '+03:00',
+        'москва': '+03:00', 'санкт-петербург': '+03:00', 'новосибирск': '+07:00',
+        'екатеринбург': '+05:00', 'казань': '+03:00', 'самара': '+04:00',
+        'киев': '+02:00', 'харьков': '+02:00', 'одесса': '+02:00',
+        'варшава': '+01:00', 'вильнюс': '+02:00', 'рига': '+02:00',
+        'берлин': '+01:00', 'париж': '+01:00', 'лондон': '+00:00',
     }
     
     def __init__(self):
@@ -28,10 +78,14 @@ class NatalService:
     
     def get_coordinates(self, place: str) -> Tuple[float, float, str]:
         place_lower = place.lower().strip()
+        # Ищем по точному совпадению или вхождению
         for city, coords in self.CITY_COORDS.items():
-            if city in place_lower:
+            if city in place_lower or place_lower in city:
                 tz = self.TIMEZONES.get(city, '+03:00')
+                logger.info(f"Найден город: {city}, координаты: {coords}, часовой пояс: {tz}")
                 return coords[0], coords[1], tz
+        # По умолчанию Москва
+        logger.warning(f"Город '{place}' не найден, использую Москву")
         return 55.7558, 37.6173, '+03:00'
     
     def validate_date(self, date_str: str) -> Tuple[bool, Optional[Tuple[int, int, int]]]:
@@ -62,9 +116,12 @@ class NatalService:
         hour, minute = map(int, birth_time.split(':'))
         lat, lon, tz = self.get_coordinates(birth_place)
         geo = GeoLocation(birth_place, lon, lat)
+        logger.info(f"Создание Time объекта: {year}-{month}-{day} {hour}:{minute}, tz={tz}, lat={lat}, lon={lon}")
         return Time(hour=hour, minute=minute, day=day, month=month, year=year, offset=tz, geolocation=geo)
     
     def create_natal_chart(self, name: str, birth_date: str, birth_time: str, birth_place: str) -> Dict[str, Any]:
+        logger.info(f"Создание натальной карты для {name}, дата: {birth_date}, время: {birth_time}, место: {birth_place}")
+        
         valid, date_parts = self.validate_date(birth_date)
         if not valid:
             raise ValueError("Неверная дата рождения")
@@ -73,48 +130,66 @@ class NatalService:
             raise ValueError("Неверное время рождения")
         hour, minute = time_parts if time_parts else (12, 0)
         birth_time_corrected = f"{hour:02d}:{minute:02d}"
-        birth_time_obj = self._create_time_object(birth_date, birth_time_corrected, birth_place)
         
-        planets = []
-        planet_names = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn']
-        planet_names_ru = ['Солнце', 'Луна', 'Меркурий', 'Венера', 'Марс', 'Юпитер', 'Сатурн']
-        planet_symbols = ['☉', '☽', '☿', '♀', '♂', '♃', '♄']
-        
-        for i, eng_name in enumerate(planet_names):
-            try:
-                planet_data = Calculate.AllPlanetData(getattr(PlanetName, eng_name), birth_time_obj)
-                planets.append({
-                    'name': planet_names_ru[i],
-                    'symbol': planet_symbols[i],
-                    'sign': planet_data.Sign.Name if hasattr(planet_data, 'Sign') else 'Неизвестно',
-                    'house': planet_data.HousePlanetIsIn if hasattr(planet_data, 'HousePlanetIsIn') else '?',
-                    'retrograde': planet_data.Retrograde if hasattr(planet_data, 'Retrograde') else False,
-                })
-            except Exception as e:
-                planets.append({'name': planet_names_ru[i], 'symbol': planet_symbols[i], 'sign': 'Неизвестно', 'house': '?', 'retrograde': False})
-        
-        houses = []
-        for i in range(1, 13):
-            try:
-                house_data = Calculate.AllHouseData(i, birth_time_obj)
-                houses.append({'number': i, 'sign': house_data.SignName if hasattr(house_data, 'SignName') else 'Неизвестно'})
-            except:
-                houses.append({'number': i, 'sign': 'Неизвестно'})
-        
-        sun_sign = planets[0]['sign'] if planets else 'Неизвестно'
-        elements = {'Овен': 'Огонь', 'Лев': 'Огонь', 'Стрелец': 'Огонь', 'Телец': 'Земля', 'Дева': 'Земля', 'Козерог': 'Земля', 'Близнецы': 'Воздух', 'Весы': 'Воздух', 'Водолей': 'Воздух', 'Рак': 'Вода', 'Скорпион': 'Вода', 'Рыбы': 'Вода'}
-        qualities = {'Овен': 'Кардинальный', 'Рак': 'Кардинальный', 'Весы': 'Кардинальный', 'Козерог': 'Кардинальный', 'Телец': 'Фиксированный', 'Лев': 'Фиксированный', 'Скорпион': 'Фиксированный', 'Водолей': 'Фиксированный', 'Близнецы': 'Мутабельный', 'Дева': 'Мутабельный', 'Стрелец': 'Мутабельный', 'Рыбы': 'Мутабельный'}
-        ascendant = houses[0]['sign'] if houses else 'Неизвестно'
-        
-        return {
-            'sun_sign': sun_sign,
-            'element': elements.get(sun_sign, 'Неизвестно'),
-            'quality': qualities.get(sun_sign, 'Неизвестно'),
-            'ascendant': ascendant,
-            'planets': planets,
-            'houses': houses,
-            'birth_info': {'name': name, 'date': birth_date, 'time': birth_time_corrected, 'place': birth_place}
-        }
+        try:
+            birth_time_obj = self._create_time_object(birth_date, birth_time_corrected, birth_place)
+            
+            planets = []
+            planet_names = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn']
+            planet_names_ru = ['Солнце', 'Луна', 'Меркурий', 'Венера', 'Марс', 'Юпитер', 'Сатурн']
+            planet_symbols = ['☉', '☽', '☿', '♀', '♂', '♃', '♄']
+            
+            for i, eng_name in enumerate(planet_names):
+                try:
+                    planet_data = Calculate.AllPlanetData(getattr(PlanetName, eng_name), birth_time_obj)
+                    sign_name = planet_data.Sign.Name if hasattr(planet_data, 'Sign') else 'Неизвестно'
+                    house_num = planet_data.HousePlanetIsIn if hasattr(planet_data, 'HousePlanetIsIn') else '?'
+                    retrograde = planet_data.Retrograde if hasattr(planet_data, 'Retrograde') else False
+                    logger.info(f"{planet_names_ru[i]}: знак {sign_name}, дом {house_num}, ретроград {retrograde}")
+                    planets.append({
+                        'name': planet_names_ru[i],
+                        'symbol': planet_symbols[i],
+                        'sign': sign_name,
+                        'house': str(house_num),
+                        'retrograde': retrograde,
+                    })
+                except Exception as e:
+                    logger.error(f"Ошибка получения данных для {eng_name}: {e}")
+                    planets.append({
+                        'name': planet_names_ru[i],
+                        'symbol': planet_symbols[i],
+                        'sign': 'Неизвестно',
+                        'house': '?',
+                        'retrograde': False,
+                    })
+            
+            houses = []
+            for i in range(1, 13):
+                try:
+                    house_data = Calculate.AllHouseData(i, birth_time_obj)
+                    sign_name = house_data.SignName if hasattr(house_data, 'SignName') else 'Неизвестно'
+                    houses.append({'number': i, 'sign': sign_name})
+                except Exception as e:
+                    logger.error(f"Ошибка получения данных для дома {i}: {e}")
+                    houses.append({'number': i, 'sign': 'Неизвестно'})
+            
+            sun_sign = planets[0]['sign'] if planets else 'Неизвестно'
+            elements = {'Овен': 'Огонь', 'Лев': 'Огонь', 'Стрелец': 'Огонь', 'Телец': 'Земля', 'Дева': 'Земля', 'Козерог': 'Земля', 'Близнецы': 'Воздух', 'Весы': 'Воздух', 'Водолей': 'Воздух', 'Рак': 'Вода', 'Скорпион': 'Вода', 'Рыбы': 'Вода'}
+            qualities = {'Овен': 'Кардинальный', 'Рак': 'Кардинальный', 'Весы': 'Кардинальный', 'Козерог': 'Кардинальный', 'Телец': 'Фиксированный', 'Лев': 'Фиксированный', 'Скорпион': 'Фиксированный', 'Водолей': 'Фиксированный', 'Близнецы': 'Мутабельный', 'Дева': 'Мутабельный', 'Стрелец': 'Мутабельный', 'Рыбы': 'Мутабельный'}
+            ascendant = houses[0]['sign'] if houses else 'Неизвестно'
+            
+            return {
+                'sun_sign': sun_sign,
+                'element': elements.get(sun_sign, 'Неизвестно'),
+                'quality': qualities.get(sun_sign, 'Неизвестно'),
+                'ascendant': ascendant,
+                'planets': planets,
+                'houses': houses,
+                'birth_info': {'name': name, 'date': birth_date, 'time': birth_time_corrected, 'place': birth_place}
+            }
+        except Exception as e:
+            logger.error(f"Критическая ошибка VedAstro: {e}")
+            raise ValueError(f"Ошибка расчёта: {str(e)}")
     
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
         try:
