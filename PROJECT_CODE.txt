@@ -1,0 +1,4055 @@
+################################################################################# АРХИВ КОДА ПРОЕКТА ASTROBOT################################################################################# Корневая папка: C:\Users\User\Desktop\TgBot2\AstroBot################################################################################
+================================================================================
+# ФАЙЛ: webhook_bot.py
+================================================================================
+import os
+import logging
+import asyncio
+from flask import Flask, request
+from aiogram import Bot, Dispatcher
+from aiogram.types import Update
+from config import BOT_TOKEN
+from loader import setup_bot  # <--- ДОБАВЬТЕ ЭТОТ ИМПОРТ
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+# Импорт всех роутеров
+from handlers.start import router as start_router
+from handlers.ai_handler import router as ai_router
+from handlers.natal import router as natal_router
+from handlers.admin_simple import router as admin_router
+from handlers.horoscope import router as horoscope_router
+from handlers.compatibility import router as compatibility_router
+from handlers.profile import router as profile_router
+from handlers.pdf_handler import router as pdf_router
+
+# Подключение всех роутеров
+dp.include_router(start_router)
+dp.include_router(ai_router)
+dp.include_router(natal_router)
+dp.include_router(admin_router)
+dp.include_router(horoscope_router)
+dp.include_router(compatibility_router)
+dp.include_router(profile_router)
+dp.include_router(pdf_router)
+
+# Глобальный цикл событий
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Обработчик веб-хука"""
+    try:
+        data = request.get_json()
+        update = Update.model_validate(data, context={'bot': bot})
+        
+        future = asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), loop)
+        future.result(timeout=10)
+        
+        return 'OK', 200
+    except Exception as e:
+        logger.error(f"Ошибка в веб-хуке: {e}")
+        return 'Error', 500
+
+@app.route('/health')
+def health():
+    return 'OK', 200
+
+@app.route('/')
+def home():
+    return 'Bot is running!', 200
+
+async def setup_webhook():
+    # ИНИЦИАЛИЗИРУЕМ БАЗУ ДАННЫХ
+    await setup_bot()  # <--- ЭТО ВАЖНО!
+    
+    webhook_url = f"{os.environ.get('RENDER_EXTERNAL_URL', 'https://astrobot-spui.onrender.com')}/webhook"
+    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.set_webhook(webhook_url)
+    logger.info(f"Webhook установлен: {webhook_url}")
+
+def run_loop():
+    """Запускает цикл событий в отдельном потоке"""
+    loop.run_forever()
+
+if __name__ == "__main__":
+    # Настраиваем веб-хук и инициализируем базу
+    loop.run_until_complete(setup_webhook())
+    
+    # Запускаем цикл событий в фоне
+    import threading
+    threading.Thread(target=run_loop, daemon=True).start()
+    
+    # Запускаем Flask
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
+================================================================================
+# ФАЙЛ: astrology_calculator.py
+================================================================================
+from datetime import datetime, timedelta
+import math
+import random
+
+class AstrologyCalculator:
+    @staticmethod
+    def get_zodiac_sign(birth_date):
+        """Определяет знак зодиака по дате"""
+        day = birth_date.day
+        month = birth_date.month
+        
+        if month == 1:
+            return 'Козерог' if day <= 19 else 'Водолей'
+        elif month == 2:
+            return 'Водолей' if day <= 18 else 'Рыбы'
+        elif month == 3:
+            return 'Рыбы' if day <= 20 else 'Овен'
+        elif month == 4:
+            return 'Овен' if day <= 19 else 'Телец'
+        elif month == 5:
+            return 'Телец' if day <= 20 else 'Близнецы'
+        elif month == 6:
+            return 'Близнецы' if day <= 20 else 'Рак'
+        elif month == 7:
+            return 'Рак' if day <= 22 else 'Лев'
+        elif month == 8:
+            return 'Лев' if day <= 22 else 'Дева'
+        elif month == 9:
+            return 'Дева' if day <= 22 else 'Весы'
+        elif month == 10:
+            return 'Весы' if day <= 22 else 'Скорпион'
+        elif month == 11:
+            return 'Скорпион' if day <= 21 else 'Стрелец'
+        elif month == 12:
+            return 'Стрелец' if day <= 21 else 'Козерог'
+        return 'Неизвестно'
+    
+    @staticmethod
+    def get_chinese_zodiac(year):
+        """Определяет знак китайского гороскопа по году"""
+        animals = [
+            'Крыса', 'Бык', 'Тигр', 'Кролик', 'Дракон', 'Змея',
+            'Лошадь', 'Коза', 'Обезьяна', 'Петух', 'Собака', 'Свинья'
+        ]
+        return animals[(year - 1900) % 12]
+    
+    @staticmethod
+    def get_element_by_year(year):
+        """Определяет стихию по году рождения"""
+        elements = ['Дерево', 'Огонь', 'Земля', 'Металл', 'Вода']
+        return elements[(year - 1900) % 5]
+    
+    @staticmethod
+    def calculate_moon_phase(birth_date):
+        """Определяет фазу Луны в день рождения (упрощенно)"""
+        # Базовая дата для расчета (новолуние 2020-01-01)
+        base_date = datetime(2020, 1, 1)
+        days_diff = (birth_date - base_date).days
+        lunar_cycle = 29.53  # дней
+        phase_position = (days_diff % lunar_cycle) / lunar_cycle
+        
+        if phase_position < 0.125:
+            return "🌑 Новолуние"
+        elif phase_position < 0.25:
+            return "🌒 Растущий серп"
+        elif phase_position < 0.375:
+            return "🌓 Первая четверть"
+        elif phase_position < 0.5:
+            return "🌔 Растущая луна"
+        elif phase_position < 0.625:
+            return "🌕 Полнолуние"
+        elif phase_position < 0.75:
+            return "🌖 Убывающая луна"
+        elif phase_position < 0.875:
+            return "🌗 Последняя четверть"
+        else:
+            return "🌘 Убывающий серп"
+    
+    @staticmethod
+    def calculate_time_angle(birth_time):
+        """Вычисляет угол на основе времени рождения"""
+        if not birth_time:
+            return 0
+        try:
+            time_obj = datetime.strptime(birth_time, "%H:%M")
+            minutes = time_obj.hour * 60 + time_obj.minute
+            return (minutes / 1440) * 360  # угол от 0 до 360
+        except:
+            return 0
+
+class CompatibilityCalculator:
+    def __init__(self):
+        self.astro = AstrologyCalculator()
+    
+    def calculate_compatibility(self, person1_data, person2_data):
+        """Рассчитывает совместимость на основе всех данных"""
+        
+        # Парсим данные
+        try:
+            date1 = datetime.strptime(person1_data.get('date', '2000-01-01'), '%Y-%m-%d')
+            date2 = datetime.strptime(person2_data.get('date', '2000-01-01'), '%Y-%m-%d')
+        except:
+            date1 = datetime(2000, 1, 1)
+            date2 = datetime(2000, 1, 1)
+        
+        # Получаем знаки зодиака
+        sign1 = self.astro.get_zodiac_sign(date1)
+        sign2 = self.astro.get_zodiac_sign(date2)
+        
+        # Получаем китайские знаки
+        chinese1 = self.astro.get_chinese_zodiac(date1.year)
+        chinese2 = self.astro.get_chinese_zodiac(date2.year)
+        
+        # Получаем стихии
+        element1 = self.astro.get_element_by_year(date1.year)
+        element2 = self.astro.get_element_by_year(date2.year)
+        
+        # Фазы луны
+        moon1 = self.astro.calculate_moon_phase(date1)
+        moon2 = self.astro.calculate_moon_phase(date2)
+        
+        # Углы времени
+        time_angle1 = self.astro.calculate_time_angle(person1_data.get('time'))
+        time_angle2 = self.astro.calculate_time_angle(person2_data.get('time'))
+        
+        # Рассчитываем базовую совместимость знаков
+        base_score = self._get_zodiac_compatibility(sign1, sign2)
+        
+        # Модификаторы
+        modifiers = []
+        
+        # Китайский гороскоп
+        chinese_score = self._get_chinese_compatibility(chinese1, chinese2)
+        if chinese_score > 0:
+            modifiers.append(("Китайский гороскоп", chinese_score))
+        
+        # Стихии
+        element_score = self._get_element_compatibility(element1, element2)
+        if element_score != 0:
+            modifiers.append(("Стихии", element_score))
+        
+        # Фазы луны
+        moon_score = self._get_moon_compatibility(moon1, moon2)
+        if moon_score != 0:
+            modifiers.append(("Фазы луны", moon_score))
+        
+        # Временной угол (если есть время рождения)
+        if person1_data.get('time') and person2_data.get('time'):
+            time_score = self._get_time_compatibility(time_angle1, time_angle2)
+            modifiers.append(("Время рождения", time_score))
+        
+        # Итоговый счет
+        total_score = base_score
+        for _, score in modifiers:
+            total_score += score
+        
+        # Ограничиваем от 0 до 100
+        total_score = max(0, min(100, total_score))
+        
+        return {
+            'total_score': total_score,
+            'base_score': base_score,
+            'signs': (sign1, sign2),
+            'chinese': (chinese1, chinese2),
+            'elements': (element1, element2),
+            'moons': (moon1, moon2),
+            'modifiers': modifiers,
+            'description': self._get_description(total_score, sign1, sign2),
+            'advice': self._get_advice(total_score)
+        }
+    
+    def _get_zodiac_compatibility(self, sign1, sign2):
+        """База совместимости знаков зодиака"""
+        compatibility = {
+            ('Овен', 'Лев'): 90, ('Овен', 'Стрелец'): 95,
+            ('Овен', 'Близнецы'): 75, ('Овен', 'Водолей'): 70,
+            ('Телец', 'Дева'): 90, ('Телец', 'Козерог'): 85,
+            ('Телец', 'Рак'): 75, ('Телец', 'Рыбы'): 70,
+            ('Близнецы', 'Весы'): 90, ('Близнецы', 'Водолей'): 85,
+            ('Близнецы', 'Овен'): 75, ('Близнецы', 'Лев'): 70,
+            ('Рак', 'Скорпион'): 95, ('Рак', 'Рыбы'): 90,
+            ('Рак', 'Дева'): 70, ('Рак', 'Козерог'): 60,
+            ('Лев', 'Стрелец'): 95, ('Лев', 'Овен'): 90,
+            ('Лев', 'Близнецы'): 75, ('Лев', 'Весы'): 65,
+            ('Дева', 'Козерог'): 90, ('Дева', 'Телец'): 85,
+            ('Дева', 'Рак'): 70, ('Дева', 'Скорпион'): 65,
+            ('Весы', 'Водолей'): 90, ('Весы', 'Близнецы'): 85,
+            ('Весы', 'Лев'): 75, ('Весы', 'Стрелец'): 70,
+            ('Скорпион', 'Рыбы'): 95, ('Скорпион', 'Рак'): 90,
+            ('Скорпион', 'Дева'): 70, ('Скорпион', 'Козерог'): 65,
+            ('Стрелец', 'Овен'): 95, ('Стрелец', 'Лев'): 90,
+            ('Стрелец', 'Весы'): 70, ('Стрелец', 'Водолей'): 65,
+            ('Козерог', 'Телец'): 90, ('Козерог', 'Дева'): 85,
+            ('Козерог', 'Скорпион'): 70, ('Козерог', 'Рыбы'): 60,
+            ('Водолей', 'Весы'): 90, ('Водолей', 'Близнецы'): 85,
+            ('Водолей', 'Овен'): 70, ('Водолей', 'Стрелец'): 65,
+            ('Рыбы', 'Рак'): 95, ('Рыбы', 'Скорпион'): 90,
+            ('Рыбы', 'Телец'): 70, ('Рыбы', 'Козерог'): 60,
+        }
+        
+        # Проверяем оба порядка
+        if (sign1, sign2) in compatibility:
+            return compatibility[(sign1, sign2)]
+        elif (sign2, sign1) in compatibility:
+            return compatibility[(sign2, sign1)]
+        else:
+            return 75  # Базовая совместимость
+    
+    def _get_chinese_compatibility(self, chinese1, chinese2):
+        """Совместимость по китайскому гороскопу"""
+        pairs = {
+            ('Крыса', 'Дракон'): 5, ('Крыса', 'Обезьяна'): 5,
+            ('Бык', 'Змея'): 5, ('Бык', 'Петух'): 5,
+            ('Тигр', 'Лошадь'): 5, ('Тигр', 'Собака'): 5,
+            ('Кролик', 'Коза'): 5, ('Кролик', 'Свинья'): 5,
+            ('Дракон', 'Обезьяна'): 5, ('Дракон', 'Крыса'): 5,
+            ('Змея', 'Петух'): 5, ('Змея', 'Бык'): 5,
+            ('Лошадь', 'Собака'): 5, ('Лошадь', 'Тигр'): 5,
+            ('Коза', 'Свинья'): 5, ('Коза', 'Кролик'): 5,
+            ('Обезьяна', 'Крыса'): 5, ('Обезьяна', 'Дракон'): 5,
+            ('Петух', 'Бык'): 5, ('Петух', 'Змея'): 5,
+            ('Собака', 'Тигр'): 5, ('Собака', 'Лошадь'): 5,
+            ('Свинья', 'Кролик'): 5, ('Свинья', 'Коза'): 5,
+        }
+        
+        if (chinese1, chinese2) in pairs:
+            return pairs[(chinese1, chinese2)]
+        elif (chinese2, chinese1) in pairs:
+            return pairs[(chinese2, chinese1)]
+        return 0
+    
+    def _get_element_compatibility(self, element1, element2):
+        """Совместимость стихий"""
+        elements_order = ['Дерево', 'Огонь', 'Земля', 'Металл', 'Вода']
+        
+        try:
+            idx1 = elements_order.index(element1)
+            idx2 = elements_order.index(element2)
+            
+            # Порождающие циклы
+            if (idx2 - idx1) % 5 == 1:
+                return 3  # Один порождает другой
+            elif (idx1 - idx2) % 5 == 1:
+                return 2  # Второй порождает первый
+            elif abs(idx1 - idx2) == 2 or abs(idx1 - idx2) == 3:
+                return -2  # Конфликтующие стихии
+            else:
+                return 1  # Нейтральные
+        except:
+            return 0
+    
+    def _get_moon_compatibility(self, moon1, moon2):
+        """Совместимость по фазам луны"""
+        if moon1 == moon2:
+            return 3
+        elif 'луна' in moon1 and 'луна' in moon2:
+            return 1
+        return 0
+    
+    def _get_time_compatibility(self, angle1, angle2):
+        """Совместимость по времени рождения"""
+        diff = abs(angle1 - angle2)
+        if diff < 30 or diff > 330:
+            return 5  # Гармоничный аспект
+        elif abs(diff - 180) < 30:
+            return 3  # Оппозиция
+        elif abs(diff - 90) < 30 or abs(diff - 270) < 30:
+            return 2  # Квадратура
+        else:
+            return 1  # Нейтрально
+    
+    def _get_description(self, score, sign1, sign2):
+        """Описание совместимости"""
+        if score >= 90:
+            return f"✨ Идеальная совместимость! {sign1} и {sign2} созданы друг для друга. Ваши энергии идеально дополняют друг друга."
+        elif score >= 80:
+            return f"🌟 Отличная совместимость! У вас много общего и вы хорошо понимаете друг друга."
+        elif score >= 70:
+            return f"💫 Хорошая совместимость. Есть над чем работать, но у вас большой потенциал."
+        elif score >= 60:
+            return f"⭐ Неплохая совместимость. При взаимных усилиях отношения могут быть гармоничными."
+        elif score >= 50:
+            return f"⚡ Средняя совместимость. Вам нужно учиться понимать друг друга."
+        else:
+            return f"🌊 Сложная совместимость. Разные характеры, но это не приговор - любовь может преодолеть всё!"
+    
+    def _get_advice(self, score):
+        """Совет на основе совместимости"""
+        if score >= 80:
+            return "Доверяйте друг другу и поддерживайте в начинаниях. Ваш союз - это сила!"
+        elif score >= 60:
+            return "Больше общайтесь и делитесь чувствами. Учитесь находить компромиссы."
+        else:
+            return "Работайте над взаимопониманием. Цените различия - они делают вас уникальными."
+
+compatibility_calc = CompatibilityCalculator()
+
+================================================================================
+# ФАЙЛ: states.py
+================================================================================
+from aiogram.fsm.state import StatesGroup, State
+
+class NatalChartStates(StatesGroup):
+    waiting_name = State()
+    waiting_birth_date = State() 
+    waiting_birth_time = State()
+    waiting_birth_place = State()
+    waiting_coordinates = State()
+
+class AIQuestionStates(StatesGroup):
+    waiting_question = State()
+
+class CompatibilityStates(StatesGroup):
+    waiting_partner1 = State()
+    waiting_partner2 = State()
+    waiting_partner_date = State()
+    waiting_partner2_date = State()
+
+class ProfileEditStates(StatesGroup):
+    waiting_name = State()
+    waiting_birth_date = State()
+    waiting_birth_time = State()
+    waiting_birth_place = State()
+
+class AdminStatesGroup(StatesGroup):
+    waiting_user_id = State()
+    waiting_subscription_days = State()
+    waiting_broadcast_message = State()
+    waiting_user_search = State()
+
+================================================================================
+# ФАЙЛ: config.py
+================================================================================
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+
+# ВАЖНО: замените 1079935212 на ваш реальный Telegram ID
+ADMINS = [int(os.getenv('ADMIN_ID', 1079935212))]
+
+DB_PATH = 'astro.db'
+
+# Настройки n1n.ai
+N1N_API_KEY = os.getenv('N1N_API_KEY', OPENROUTER_API_KEY)
+N1N_BASE_URL = 'https://api.n1n.ai/v1'
+N1N_MODEL = 'gpt-4o-mini'
+
+# Для обратной совместимости
+OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
+OPENROUTER_MODEL = 'google/gemini-2.0-flash-exp:free'
+
+================================================================================
+# ФАЙЛ: scheduler.py
+================================================================================
+import asyncio
+import logging
+from datetime import datetime
+from aiogram import Bot
+
+logger = logging.getLogger(__name__)
+
+async def send_morning_message(bot: Bot):
+    """Отправка утреннего гороскопа"""
+    from database.db import UserDB
+    from config import ADMINS
+
+    text = "🌅 Доброе утро! Ваш гороскоп на сегодня готов!"
+
+    for admin_id in ADMINS:
+        try:
+            await bot.send_message(admin_id, text)
+            logger.info(f"Утреннее сообщение отправлено админу {admin_id}")
+        except Exception as e:
+            logger.error(f"Не удалось отправить сообщение админу {admin_id}: {e}")
+
+async def daily_backup():
+    """Ежедневное создание бэкапа базы данных"""
+    try:
+        from backup_db import create_backup
+        logger.info("🔄 Запуск ежедневного бэкапа...")
+        create_backup()
+    except Exception as e:
+        logger.error(f"❌ Ошибка бэкапа: {e}")
+
+async def scheduler_worker(bot: Bot):
+    """Фоновая задача, которая проверяет время и запускает нужные функции"""
+    last_backup_date = None
+    
+    while True:
+        now = datetime.now()
+        
+        # Утренняя рассылка в 8:00
+        if now.hour == 8 and now.minute == 0:
+            logger.info("Время 8:00, запускаю отправку утренних сообщений.")
+            await send_morning_message(bot)
+            await asyncio.sleep(61)
+        
+        # Ежедневный бэкап в 3:00
+        elif now.hour == 3 and now.minute == 0 and last_backup_date != now.date():
+            await daily_backup()
+            last_backup_date = now.date()
+            await asyncio.sleep(61)
+        
+        else:
+            await asyncio.sleep(30)
+
+async def start_scheduler(bot: Bot):
+    """Запускает планировщик как фоновую задачу"""
+    logger.info("Запуск планировщика на asyncio...")
+    asyncio.create_task(scheduler_worker(bot))
+
+================================================================================
+# ФАЙЛ: loader.py
+================================================================================
+import asyncio
+import logging
+from aiogram import Bot, Dispatcher
+from config import BOT_TOKEN
+from database.db import init_db
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+
+async def setup_bot():
+    logger.info('Инициализация...')
+    await init_db()
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+    except Exception as e:
+        logger.warning(f'Webhook warning: {e}')
+    logger.info('Готов к работе!')
+
+async def shutdown_bot():
+    logger.info('Отключение...')
+    await bot.session.close()
+
+
+================================================================================
+# ФАЙЛ: backup_db.py
+================================================================================
+import os
+import shutil
+import logging
+from datetime import datetime
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+BASE_DIR = Path(__file__).parent
+DB_PATH = BASE_DIR / 'astro.db'
+BACKUP_DIR = BASE_DIR / 'backups'
+
+def create_backup():
+    """Создает бэкап базы данных"""
+    try:
+        if not DB_PATH.exists():
+            logger.warning(f"База данных не найдена: {DB_PATH}")
+            return False
+        
+        BACKUP_DIR.mkdir(exist_ok=True)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_file = BACKUP_DIR / f'astro_backup_{timestamp}.db'
+        
+        shutil.copy2(DB_PATH, backup_file)
+        logger.info(f"✅ Бэкап создан: {backup_file.name}")
+        
+        # Удаляем старые бэкапы (оставляем последние 10)
+        backups = sorted(BACKUP_DIR.glob('astro_backup_*.db'))
+        if len(backups) > 10:
+            for old in backups[:-10]:
+                old.unlink()
+                logger.info(f"🗑️ Удален старый бэкап: {old.name}")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка создания бэкапа: {e}")
+        return False
+
+================================================================================
+# ФАЙЛ: ai_service_fixed.py
+================================================================================
+import httpx
+import logging
+import random
+import asyncio
+from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
+from database.db import UserDB
+
+logger = logging.getLogger(__name__)
+
+class AIService:
+    def __init__(self):
+        self.api_key = OPENROUTER_API_KEY
+        self.base_url = OPENROUTER_BASE_URL
+        # Список реально работающих бесплатных моделей на 2026 год
+        self.models = [
+		"stepfun/step-3.5-flash:free",
+  		"arcee-ai/trinity-large-preview:free",
+   		"openrouter/hunter-alpha:free",
+   		"nvidia/nemotron-3-super-120b:free",
+   		"openrouter/healer-alpha:free",
+    		"z-ai/glm-4.5-air:free",
+   		"nvidia/nemotron-3-nano-30b-a3b:free",
+    		"arcee-ai/trinity-mini:free",
+    		"qwen/qwen3-coder-480b-a35b:free",
+   		"meta-llama/llama-3.3-70b-instruct:free",
+    		"qwen/qwen3-next-80b-a3b:free",
+    		"openai/gpt-oss-120b:free",
+]
+        self.current_model = 0
+        logger.info(f"AI Service инициализирован. API Key: {self.api_key[:10]}...")
+        logger.info(f"Доступно моделей: {len(self.models)}")
+    
+    async def process_question(self, user_id, question):
+        """Пробует разные модели пока не получит ответ"""
+        user_data = await UserDB.get_user(user_id)
+        
+        # Формируем контекст из данных пользователя
+        context = ""
+        if user_data and user_data.get('birth_date'):
+            from datetime import datetime
+            try:
+                birth_date = datetime.strptime(user_data['birth_date'], '%Y-%m-%d')
+                sign = self._get_zodiac_sign(birth_date)
+                context = f"Знак зодиака пользователя: {sign}. "
+                if user_data.get('birth_time'):
+                    context += f"Время рождения: {user_data['birth_time']}. "
+                if user_data.get('birth_place'):
+                    context += f"Место рождения: {user_data['birth_place']}. "
+            except:
+                pass
+        
+        # Пробуем каждую модель по очереди
+        for attempt in range(len(self.models)):
+            model = self.models[attempt]
+            logger.info(f"Попытка {attempt+1}: модель {model}")
+            
+            result = await self._try_model(model, question, context)
+            if result:
+                logger.info(f"✅ Модель {model} сработала")
+                return {'type': 'ai_answer', 'message': result}
+            
+            await asyncio.sleep(0.5)  # Небольшая пауза между попытками
+        
+        # Если все модели не сработали, используем локальную базу знаний
+        logger.warning("Все модели OpenRouter недоступны, использую локальную базу")
+        return {'type': 'ai_answer', 'message': self._get_local_answer(question, context)}
+    
+    async def _try_model(self, model, question, context):
+        """Пробует отправить запрос к конкретной модели"""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://t.me/alles_astro_bot",
+                "X-Title": "AstroBot"
+            }
+            
+            system_prompt = """Ты - профессиональный астролог с 20-летним опытом. 
+Отвечай на вопросы о гороскопах, знаках зодиака, совместимости, натальных картах и влиянии планет.
+Отвечай кратко (2-3 предложения), но информативно. Используй астрологическую терминологию, но объясняй простым языком.
+Будь дружелюбным и поддерживающим."""
+            
+            full_prompt = f"{context}\n\nВопрос пользователя: {question}"
+            
+            data = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": full_prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 300
+            }
+            
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=data
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    return result['choices'][0]['message']['content']
+                else:
+                    logger.debug(f"Модель {model} вернула {response.status_code}")
+                    return None
+                    
+        except Exception as e:
+            logger.debug(f"Ошибка с моделью {model}: {e}")
+            return None
+    
+    def _get_local_answer(self, question, context):
+        """Локальная база знаний астрологии"""
+        question_lower = question.lower()
+        
+        # Определяем знак из вопроса
+        signs = {
+            'овен': '♈ Овна', 'телец': '♉ Тельца', 'близнецы': '♊ Близнецов',
+            'рак': '♋ Рака', 'лев': '♌ Льва', 'дева': '♍ Девы',
+            'весы': '♎ Весов', 'скорпион': '♏ Скорпиона', 'стрелец': '♐ Стрельца',
+            'козерог': '♑ Козерога', 'водолей': '♒ Водолея', 'рыбы': '♓ Рыб'
+        }
+        
+        found_sign = None
+        for sign_ru, sign_display in signs.items():
+            if sign_ru in question_lower:
+                found_sign = sign_display
+                break
+        
+        # Определяем тип вопроса
+        if any(word in question_lower for word in ['совместимость', 'отношения', 'любовь', 'подходит']):
+            if found_sign:
+                return self._get_compatibility_answer(found_sign)
+            return "💕 Для анализа совместимости укажите знаки партнёров. Например: 'Совместимость Овна и Льва'"
+        
+        elif any(word in question_lower for word in ['карьера', 'работа', 'бизнес', 'деньги']):
+            if found_sign:
+                return self._get_career_answer(found_sign)
+            return self._get_random_career_advice()
+        
+        elif any(word in question_lower for word in ['здоровье', 'самочувствие']):
+            if found_sign:
+                return self._get_health_answer(found_sign)
+            return "🌿 Для точного прогноза здоровья укажите ваш знак зодиака"
+        
+        elif any(word in question_lower for word in ['сегодня', 'завтра', 'неделя']):
+            if found_sign:
+                return self._get_daily_horoscope(found_sign)
+            return self._get_random_horoscope()
+        
+        else:
+            return self._get_random_astrology_fact()
+    
+    def _get_zodiac_sign(self, birth_date):
+        """Определяет знак зодиака по дате"""
+        day = birth_date.day
+        month = birth_date.month
+        if month == 1: return 'Козерог' if day <= 19 else 'Водолей'
+        elif month == 2: return 'Водолей' if day <= 18 else 'Рыбы'
+        elif month == 3: return 'Рыбы' if day <= 20 else 'Овен'
+        elif month == 4: return 'Овен' if day <= 19 else 'Телец'
+        elif month == 5: return 'Телец' if day <= 20 else 'Близнецы'
+        elif month == 6: return 'Близнецы' if day <= 20 else 'Рак'
+        elif month == 7: return 'Рак' if day <= 22 else 'Лев'
+        elif month == 8: return 'Лев' if day <= 22 else 'Дева'
+        elif month == 9: return 'Дева' if day <= 22 else 'Весы'
+        elif month == 10: return 'Весы' if day <= 22 else 'Скорпион'
+        elif month == 11: return 'Скорпион' if day <= 21 else 'Стрелец'
+        elif month == 12: return 'Стрелец' if day <= 21 else 'Козерог'
+        return 'Неизвестно'
+    
+    def _get_compatibility_answer(self, sign):
+        """Ответ о совместимости"""
+        answers = {
+            '♈ Овна': "♈ Овен лучше всего совместим с ♌ Львом и ♐ Стрельцом. Вместе вы создадите страстный и гармоничный союз!",
+            '♉ Тельца': "♉ Телец отлично совместим с ♍ Девой и ♑ Козерогом. Ваш союз будет построен на надёжности и взаимопонимании.",
+            '♊ Близнецов': "♊ Близнецы прекрасно ладят с ♎ Весами и ♒ Водолеем. Вас ждут интересные разговоры и общие увлечения!",
+            '♋ Рака': "♋ Рак идеально совместим с ♏ Скорпионом и ♓ Рыбами. Вместе вы создадите глубокую эмоциональную связь.",
+            '♌ Льва': "♌ Лев лучше всего совместим с ♈ Овном и ♐ Стрельцом. Ваш союз будет ярким и запоминающимся!",
+            '♍ Девы': "♍ Дева отлично совместима с ♉ Тельцом и ♑ Козерогом. Практичность и надёжность - ваша сила.",
+            '♎ Весов': "♎ Весы прекрасно совместимы с ♊ Близнецами и ♒ Водолеем. Гармония и взаимопонимание - ваша основа.",
+            '♏ Скорпиона': "♏ Скорпион идеально совместим с ♋ Раком и ♓ Рыбами. Вас ждёт глубокая и страстная связь!",
+            '♐ Стрельца': "♐ Стрелец лучше всего совместим с ♈ Овном и ♌ Львом. Вместе вы покорите любые вершины!",
+            '♑ Козерога': "♑ Козерог отлично совместим с ♉ Тельцом и ♍ Девой. Надёжность и общие цели - ваш фундамент.",
+            '♒ Водолея': "♒ Водолей прекрасно совместим с ♊ Близнецами и ♎ Весами. Интеллектуальная и свободная любовь!",
+            '♓ Рыб': "♓ Рыбы идеально совместимы с ♋ Раком и ♏ Скорпионом. Мистическая и глубокая связь."
+        }
+        return answers.get(sign, "💕 Для точного анализа совместимости обратитесь к специалисту.")
+    
+    def _get_career_answer(self, sign):
+        """Карьерный прогноз"""
+        answers = {
+            '♈ Овна': "💼 Овнам сегодня звёзды советуют проявлять инициативу. Ваша энергия поможет в новых проектах!",
+            '♉ Тельца': "💼 Тельцам благоприятный день для финансовых решений. Доверьтесь своей практичности.",
+            '♊ Близнецов': "💼 Близнецов ждут новые возможности в общении и переговорах. Используйте свой дар убеждения!",
+            '♋ Рака': "💼 Ракам сегодня важно найти баланс между работой и домом. Интуиция подскажет верное решение.",
+            '♌ Льва': "💼 Львы сегодня в центре внимания. Ваши лидерские качества помогут в карьере!",
+            '♍ Девы': "💼 Девам звёзды советуют сосредоточиться на деталях. Ваша внимательность принесёт результаты.",
+            '♎ Весов': "💼 Весам благоприятный день для партнёрства и командной работы. Гармония в коллективе - ключ к успеху!",
+            '♏ Скорпиона': "💼 Скорпионам сегодня помогут стратегическое мышление и проницательность.",
+            '♐ Стрельца': "💼 Стрельцам открываются новые горизонты. Не бойтесь рисковать и пробовать новое!",
+            '♑ Козерога': "💼 Козерогам звёзды сулят карьерный рост. Ваша целеустремлённость будет вознаграждена.",
+            '♒ Водолея': "💼 Водолеям сегодня придут неожиданные идеи. Инновации приведут к успеху!",
+            '♓ Рыб': "💼 Рыбам важно доверять интуиции в профессиональных вопросах. Творческий подход оценят."
+        }
+        return answers.get(sign, "💼 Для точного карьерного прогноза укажите ваш знак зодиака.")
+    
+    def _get_health_answer(self, sign):
+        """Прогноз здоровья"""
+        answers = {
+            '♈ Овна': "🌿 Овнам сегодня важно избегать переутомления. Больше двигайтесь и отдыхайте вовремя.",
+            '♉ Тельца': "🌿 Тельцам стоит обратить внимание на горло и питание. Больше витаминов!",
+            '♊ Близнецов': "🌿 Близнецам нужен отдых для нервной системы. Медитация и прогулки помогут.",
+            '♋ Рака': "🌿 Ракам важно следить за эмоциональным состоянием. Вода и спокойствие - ваши друзья.",
+            '♌ Льва': "🌿 Львам стоит поберечь сердце. Избегайте стрессов и больше радуйтесь жизни!",
+            '♍ Девы': "🌿 Девам сегодня полезно заняться очищением организма. Лёгкая пища и детокс.",
+            '♎ Весов': "🌿 Весам важно следить за поясницей и почками. Больше воды и меньше соли.",
+            '♏ Скорпиона': "🌿 Скорпионам сегодня нужен отдых и восстановление. Сон и расслабление помогут.",
+            '♐ Стрельца': "🌿 Стрельцам стоит беречь печень. Откажитесь от жирного и алкоголя.",
+            '♑ Козерога': "🌿 Козерогам важно укрепить кости и суставы. Кальций и умеренные нагрузки.",
+            '♒ Водолея': "🌿 Водолеям сегодня полезны дыхательные практики и свежий воздух.",
+            '♓ Рыб': "🌿 Рыбам важно следить за психическим здоровьем. Творчество и отдых помогут."
+        }
+        return answers.get(sign, "🌿 Для точного прогноза здоровья укажите ваш знак зодиака.")
+    
+    def _get_daily_horoscope(self, sign):
+        """Ежедневный гороскоп"""
+        answers = {
+            '♈ Овна': "🌟 Сегодня Овнам звёзды сулят удачу в новых начинаниях. Энергия бьёт ключом - используйте её!",
+            '♉ Тельца': "🌟 Тельцов ждёт стабильный и гармоничный день. Хорошее время для покупок и финансовых решений.",
+            '♊ Близнецов': "🌟 Близнецы сегодня будут в центре внимания. Отличный день для общения и знакомств!",
+            '♋ Рака': "🌟 Ракам сегодня стоит прислушаться к интуиции. Эмоциональный, но продуктивный день.",
+            '♌ Льва': "🌟 Львы сегодня будут сиять ярче всех! День благоприятен для творчества и самовыражения.",
+            '♍ Девы': "🌟 Девам сегодня поможет организованность и внимание к деталям. Успех в работе!",
+            '♎ Весов': "🌟 Весы найдут гармонию во всём. Отличный день для отношений и романтики.",
+            '♏ Скорпиона': "🌟 Скорпионов ждёт глубокий и трансформационный день. Доверьтесь своей страсти!",
+            '♐ Стрельца': "🌟 Стрельцам сегодня нужны приключения! Хороший день для путешествий и обучения.",
+            '♑ Козерога': "🌟 Козероги достигнут целей благодаря упорству. День благоприятен для карьеры.",
+            '♒ Водолея': "🌟 Водолеям придут неожиданные идеи. Не бойтесь экспериментировать!",
+            '♓ Рыб': "🌟 Рыбы сегодня очень чувствительны. Займитесь творчеством и meditation."
+        }
+        return answers.get(sign, self._get_random_horoscope())
+    
+    def _get_random_horoscope(self):
+        """Случайный гороскоп"""
+        horoscopes = [
+            "🌟 Сегодня звёзды благоволят новым начинаниям. Смело беритесь за то, что давно откладывали!",
+            "🌟 Луна в благоприятной фазе - время для важных решений и планирования будущего.",
+            "🌟 Энергия дня располагает к общению и новым знакомствам. Будьте открыты миру!",
+            "🌟 Звёзды советуют прислушаться к интуиции. Внутренний голос подскажет верный путь.",
+            "🌟 Гармоничный день для творчества и самовыражения. Покажите миру свои таланты!",
+            "🌟 День благоприятен для финансовых вопросов. Доверьтесь своей практичности.",
+            "🌟 Отличное время для заботы о здоровье. Начните с малого - прогулка и правильное питание."
+        ]
+        return random.choice(horoscopes)
+    
+    def _get_random_career_advice(self):
+        """Случайный карьерный совет"""
+        advices = [
+            "💼 В карьере сегодня возможны неожиданные перспективы. Не упустите свой шанс!",
+            "💼 Звёзды советуют проявить инициативу. Ваши идеи будут оценены по достоинству.",
+            "💼 Удачный день для переговоров и деловых встреч. Ваша убедительность поможет!",
+            "💼 Сосредоточьтесь на важных задачах. Успех придёт через внимание к деталям.",
+            "💼 Хорошее время для обучения и повышения квалификации. Новые знания пригодятся."
+        ]
+        return random.choice(advices)
+    
+    def _get_random_astrology_fact(self):
+        """Случайный астрологический факт"""
+        facts = [
+            "🔮 Знаете ли вы? Солнце меняет знак зодиака примерно 20-го числа каждого месяца.",
+            "🔮 Меркурий становится ретроградным 3-4 раза в год на 3 недели. В это время лучше не начинать важных дел.",
+            "🔮 Ведическая астрология (Джйотиш) использует сидерический зодиак, отличающийся от западного на 23 градуса.",
+            "🔮 Луна - самое быстрое небесное тело в астрологии. Она меняет знак каждые 2.5 дня!",
+            "🔮 В астрологии учитываются не только планеты, но и астероиды, например Хирон и Церера.",
+            "🔮 Знак зодиака на восходе (Асцендент) часто важнее солнечного знака для описания личности.",
+            "🔮 Каждая планета управляет определённым днём недели: воскресенье - Солнце, понедельник - Луна и т.д."
+        ]
+        return random.choice(facts)
+
+# Создаем экземпляр сервиса
+ai_service = AIService()
+
+================================================================================
+# ФАЙЛ: requirements.txt
+================================================================================
+--only-binary :all:
+aiogram
+openai==1.6.1
+python-dotenv==1.0.0
+aiohttp
+aiosqlite==0.19.0
+reportlab==4.0.9
+flask[async]>=2.3.0
+matplotlib==3.9.2
+vedastro>=0.1.0
+
+================================================================================
+# ФАЙЛ: render.yaml
+================================================================================
+services:
+  - type: web
+    name: astrobot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    plan: free
+
+================================================================================
+# ФАЙЛ: handlers\admin_old.py
+================================================================================
+from aiogram import Router, F, types
+from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
+from config import ADMINS
+from database.db import UserDB
+from services.statistics import stats_gen
+import logging
+import os
+from datetime import datetime, timedelta
+
+router = Router()
+logger = logging.getLogger(__name__)
+
+# Состояния для FSM
+class AdminStates(StatesGroup):
+    waiting_broadcast = State()
+    waiting_user_id = State()
+    waiting_subscription_days = State()
+
+# Проверка прав администратора
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMINS
+
+# ==================== ГЛАВНОЕ МЕНЮ ====================
+
+async def show_admin_panel(message: Message):
+    """Показывает главное меню админ-панели"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users")],
+        [InlineKeyboardButton(text="💎 Подписки", callback_data="admin_subs")],
+        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="main_menu")]
+    ])
+    
+    await message.answer(
+        "👑 **Админ-панель**\n\nВыберите действие:",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+@router.message(Command("admin"))
+async def admin_command(message: Message):
+    """Открывает админ-панель"""
+    if not is_admin(message.from_user.id):
+        await message.answer("❌ У вас нет доступа к админ-панели")
+        return
+    
+    await show_admin_panel(message)
+
+# ==================== СТАТИСТИКА ====================
+
+@router.callback_query(F.data == "admin_stats")
+async def admin_stats(callback: CallbackQuery):
+    """Показывает статистику"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    
+    await callback.message.edit_text("📊 Собираю статистику...")
+    
+    try:
+        stats = await UserDB.get_stats()
+        
+        from database.db import DB_PATH
+        import aiosqlite
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            # Пользователи за последние 7 дней
+            cur = await db.execute(
+                "SELECT COUNT(*) FROM users WHERE created_at > datetime('now', '-7 days')"
+            )
+            new_last_week = (await cur.fetchone())[0]
+            
+            # Всего запросов
+            cur = await db.execute("SELECT COUNT(*) FROM requests")
+            total_requests = (await cur.fetchone())[0]
+            
+            # Запросов за сегодня
+            cur = await db.execute(
+                "SELECT COUNT(*) FROM requests WHERE created_at > datetime('now', 'start of day')"
+            )
+            today_requests = (await cur.fetchone())[0]
+        
+        text = f"""📊 **СТАТИСТИКА**
+
+👥 **Пользователи:**
+• Всего: {stats['total_users']}
+• Новых за 7 дней: {new_last_week}
+• Платных: {stats['paid_users']}
+• Бесплатных: {stats['free_users']}
+
+📈 **Запросы:**
+• Всего: {total_requests}
+• За сегодня: {today_requests}
+
+💎 **Подписки:**
+• Активных: {stats['paid_users']}
+
+📅 **Дата:** {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад в админ-панель", callback_data="admin_back")]
+        ])
+        
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Ошибка статистики: {e}")
+        await callback.message.edit_text("❌ Ошибка при получении статистики")
+
+# ==================== ПОЛЬЗОВАТЕЛИ ====================
+
+@router.callback_query(F.data == "admin_users")
+async def admin_users_menu(callback: CallbackQuery):
+    """Меню управления пользователями"""
+    if not is_admin(callback.from_user.id):
+        return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔍 Поиск по ID", callback_data="admin_search_id")],
+        [InlineKeyboardButton(text="📋 Последние 10", callback_data="admin_list_recent")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(
+        "👥 **Управление пользователями**\n\nВыберите действие:",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "admin_search_id")
+async def admin_search_id(callback: CallbackQuery, state: FSMContext):
+    """Поиск пользователя по ID"""
+    if not is_admin(callback.from_user.id):
+        return
+    
+    await state.set_state(AdminStates.waiting_user_id)
+    await callback.message.edit_text(
+        "🔍 **Поиск пользователя**\n\nВведите ID пользователя:",
+        parse_mode="Markdown"
+    )
+
+@router.message(AdminStates.waiting_user_id)
+async def process_user_search(message: Message, state: FSMContext):
+    """Обработка поиска пользователя"""
+    await state.clear()
+    
+    try:
+        user_id = int(message.text.strip())
+        user_data = await UserDB.get_user(user_id)
+        
+        if not user_data:
+            await message.answer("❌ Пользователь не найден")
+            await show_admin_panel(message)
+            return
+        
+        text = f"""👤 **Информация о пользователе**
+
+🆔 ID: `{user_data['user_id']}`
+📝 Имя: {user_data.get('first_name', 'Не указано')}
+👤 Username: @{user_data.get('username', 'Нет')}
+
+⭐ Статус: {'💎 Премиум' if user_data.get('is_paid') else '🆓 Бесплатный'}
+📅 Подписка до: {user_data.get('subscription_end', 'Не активна')}
+
+📅 Регистрация: {user_data.get('created_at', 'Неизвестно')[:10]}"""
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить подписку", callback_data=f"add_sub_{user_id}")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+        ])
+        
+        await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+        
+    except ValueError:
+        await message.answer("❌ Неверный формат ID. Введите число.")
+
+@router.callback_query(F.data == "admin_list_recent")
+async def admin_list_recent(callback: CallbackQuery):
+    """Список последних пользователей"""
+    if not is_admin(callback.from_user.id):
+        return
+    
+    from database.db import DB_PATH
+    import aiosqlite
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT user_id, first_name, username, created_at, is_paid "
+            "FROM users ORDER BY created_at DESC LIMIT 10"
+        )
+        users = await cur.fetchall()
+    
+    if not users:
+        await callback.message.edit_text("Нет пользователей")
+        return
+    
+    text = "📋 **Последние 10 пользователей:**\n\n"
+    for i, user in enumerate(users, 1):
+        status = "💎" if user['is_paid'] else "🆓"
+        name = user['first_name'] or user['username'] or str(user['user_id'])
+        created = user['created_at'][:10] if user['created_at'] else "?"
+        text += f"{i}. {status} `{user['user_id']}` - {name}\n   📅 {created}\n"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+# ==================== ПОДПИСКИ ====================
+
+@router.callback_query(F.data == "admin_subs")
+async def admin_subs_menu(callback: CallbackQuery):
+    """Меню управления подписками"""
+    if not is_admin(callback.from_user.id):
+        return
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Добавить подписку", callback_data="admin_add_sub")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(
+        "💎 **Управление подписками**\n\nВыберите действие:",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "admin_add_sub")
+async def admin_add_sub_start(callback: CallbackQuery, state: FSMContext):
+    """Начало добавления подписки"""
+    if not is_admin(callback.from_user.id):
+        return
+    
+    await state.set_state(AdminStates.waiting_user_id)
+    await callback.message.edit_text(
+        "➕ **Добавление подписки**\n\nВведите ID пользователя:",
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data.startswith("add_sub_"))
+async def admin_add_sub_from_user(callback: CallbackQuery, state: FSMContext):
+    """Добавление подписки из карточки пользователя"""
+    if not is_admin(callback.from_user.id):
+        return
+    
+    user_id = int(callback.data.split("_")[2])
+    await state.update_data(user_id=user_id)
+    await state.set_state(AdminStates.waiting_subscription_days)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="7 дней", callback_data="sub_7")],
+        [InlineKeyboardButton(text="30 дней", callback_data="sub_30")],
+        [InlineKeyboardButton(text="90 дней", callback_data="sub_90")],
+        [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(
+        f"👤 Пользователь: {user_id}\n\nВыберите срок подписки:",
+        reply_markup=keyboard
+    )
+
+@router.callback_query(F.data.startswith("sub_"))
+async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора срока подписки"""
+    days_map = {"sub_7": 7, "sub_30": 30, "sub_90": 90}
+    days = days_map.get(callback.data, 7)
+    
+    data = await state.get_data()
+    user_id = data.get('user_id')
+    
+    if user_id:
+        await UserDB.set_subscription(user_id, days)
+        
+        end_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d')
+        
+        await callback.message.edit_text(
+            f"✅ Подписка активирована!\n\n"
+            f"👤 Пользователь: {user_id}\n"
+            f"📅 Дней: {days}\n"
+            f"🗓️ Действует до: {end_date}"
+        )
+        
+        # Уведомляем пользователя
+        from loader import bot
+        try:
+            await bot.send_message(
+                user_id,
+                f"🎉 **Подписка активирована!**\n\n"
+                f"Доступна на {days} дней\n"
+                f"Действует до: {end_date}\n\n"
+                f"Спасибо за использование AstroBot! 🌟",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+    
+    await state.clear()
+    await show_admin_panel(callback.message)
+
+# ==================== РАССЫЛКА ====================
+
+@router.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
+    """Начало рассылки"""
+    if not is_admin(callback.from_user.id):
+        return
+    
+    await state.set_state(AdminStates.waiting_broadcast)
+    await callback.message.edit_text(
+        "📢 **Рассылка**\n\n"
+        "Введите текст сообщения для рассылки всем пользователям.\n\n"
+        "Доступно форматирование Markdown.\n\n"
+        "Чтобы отменить, отправьте /cancel",
+        parse_mode="Markdown"
+    )
+
+@router.message(AdminStates.waiting_broadcast)
+async def process_broadcast(message: Message, state: FSMContext):
+    """Отправка рассылки"""
+    text = message.text
+    
+    if text == "/cancel":
+        await state.clear()
+        await show_admin_panel(message)
+        return
+    
+    await state.clear()
+    
+    # Получаем всех пользователей
+    from database.db import DB_PATH
+    import aiosqlite
+    
+    msg = await message.answer("📢 Начинаю рассылку...")
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT user_id FROM users")
+        users = await cur.fetchall()
+    
+    success = 0
+    fail = 0
+    
+    from loader import bot
+    import asyncio
+    
+    for (user_id,) in users:
+        try:
+            await bot.send_message(user_id, text, parse_mode="Markdown")
+            success += 1
+            await asyncio.sleep(0.05)
+        except:
+            fail += 1
+    
+    await msg.edit_text(
+        f"✅ **Рассылка завершена**\n\n"
+        f"📤 Отправлено: {success}\n"
+        f"❌ Не доставлено: {fail}\n"
+        f"📊 Всего: {success + fail}"
+    )
+    
+    await show_admin_panel(message)
+
+# ==================== НАЗАД ====================
+
+@router.callback_query(F.data == "admin_back")
+async def back_to_admin_panel(callback: CallbackQuery):
+    """Возврат в админ-панель"""
+    await show_admin_panel(callback.message)
+
+================================================================================
+# ФАЙЛ: handlers\admin_simple.py
+================================================================================
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
+from config import ADMINS
+from database.db import UserDB
+from datetime import datetime, timedelta
+import logging
+import asyncio
+import os
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+# Состояния для FSM
+class AdminStates(StatesGroup):
+    waiting_broadcast = State()
+    waiting_user_id = State()
+    waiting_subscription_days = State()
+    waiting_search = State()
+
+# ==================== ГЛАВНОЕ МЕНЮ ====================
+
+async def show_admin_panel(target):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
+        [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users")],
+        [InlineKeyboardButton(text="💎 Подписки", callback_data="admin_subs")],
+        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
+        [InlineKeyboardButton(text="📦 Экспорт БД", callback_data="admin_export")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
+    ])
+    
+    text = "👑 **Админ-панель**\n\nВыберите действие:"
+    
+    if isinstance(target, Message):
+        await target.answer(text, reply_markup=keyboard, parse_mode="Markdown")
+    else:
+        await target.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
+
+@router.message(Command("admin"))
+async def admin_command(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ Нет доступа")
+        return
+    await show_admin_panel(message)
+
+@router.callback_query(F.data == "admin_panel")
+async def admin_panel_callback(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        await callback.answer("Нет доступа")
+        return
+    await show_admin_panel(callback)
+
+# ==================== СТАТИСТИКА ====================
+
+@router.callback_query(F.data == "admin_stats")
+async def admin_stats(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    
+    stats = await UserDB.get_stats()
+    
+    from database.db import DB_PATH
+    import aiosqlite
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT COUNT(*) FROM requests")
+        total_requests = (await cur.fetchone())[0]
+        
+        cur = await db.execute("SELECT COUNT(*) FROM requests WHERE created_at > datetime('now', 'start of day')")
+        today_requests = (await cur.fetchone())[0]
+        
+        cur = await db.execute("SELECT COUNT(*) FROM users WHERE created_at > datetime('now', '-7 days')")
+        new_last_week = (await cur.fetchone())[0]
+    
+    text = f"""📊 **СТАТИСТИКА**
+
+👥 **Пользователи:**
+• Всего: {stats['total_users']}
+• Новых за 7 дней: {new_last_week}
+• Платных: {stats['paid_users']}
+• Бесплатных: {stats['free_users']}
+
+📈 **Запросы:**
+• Всего: {total_requests}
+• За сегодня: {today_requests}
+
+📅 **Дата:** {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+# ==================== ПОЛЬЗОВАТЕЛИ ====================
+
+@router.callback_query(F.data == "admin_users")
+async def admin_users(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    
+    from database.db import DB_PATH
+    import aiosqlite
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT user_id, first_name, username, created_at, is_paid "
+            "FROM users ORDER BY created_at DESC LIMIT 10"
+        )
+        users = await cur.fetchall()
+    
+    if not users:
+        await callback.message.edit_text("Нет пользователей")
+        return
+    
+    text = "👥 **Последние 10 пользователей:**\n\n"
+    for i, user in enumerate(users, 1):
+        status = "💎" if user['is_paid'] else "🆓"
+        name = user['first_name'] or user['username'] or str(user['user_id'])
+        created = user['created_at'][:10] if user['created_at'] else "?"
+        text += f"{i}. {status} `{user['user_id']}` - {name}\n   📅 {created}\n"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔍 Поиск по ID", callback_data="admin_search_user")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+@router.callback_query(F.data == "admin_search_user")
+async def admin_search_user(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMINS:
+        return
+    
+    await callback.message.edit_text(
+        "🔍 **Поиск пользователя**\n\nВведите ID пользователя:",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AdminStates.waiting_search)
+
+@router.message(AdminStates.waiting_search)
+async def process_user_search(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMINS:
+        return
+    
+    try:
+        user_id = int(message.text.strip())
+        user_data = await UserDB.get_user(user_id)
+        
+        if not user_data:
+            await message.answer("❌ Пользователь не найден")
+            await state.clear()
+            await show_admin_panel(message)
+            return
+        
+        text = f"""👤 **Информация о пользователе**
+
+🆔 ID: `{user_data['user_id']}`
+📝 Имя: {user_data.get('first_name', 'Не указано')}
+👤 Username: @{user_data.get('username', 'Нет')}
+
+⭐ Статус: {'💎 Премиум' if user_data.get('is_paid') else '🆓 Бесплатный'}
+📅 Подписка до: {user_data.get('subscription_end', 'Не активна')}
+
+📅 Регистрация: {user_data.get('created_at', 'Неизвестно')[:10]}"""
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить подписку", callback_data=f"add_sub_{user_id}")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+        ])
+        
+        await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
+        
+    except ValueError:
+        await message.answer("❌ Неверный формат ID. Введите число.")
+    
+    await state.clear()
+
+# ==================== ПОДПИСКИ ====================
+
+@router.callback_query(F.data == "admin_subs")
+async def admin_subs(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    
+    from database.db import DB_PATH
+    import aiosqlite
+    
+    today = datetime.now().strftime('%Y-%m-%d')
+    next_week = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT COUNT(*) FROM users WHERE is_paid = 1")
+        paid_count = (await cur.fetchone())[0]
+        
+        cur = await db.execute(
+            "SELECT user_id, first_name, username, subscription_end "
+            "FROM users WHERE is_paid = 1 AND subscription_end BETWEEN ? AND ? "
+            "ORDER BY subscription_end LIMIT 5",
+            (today, next_week)
+        )
+        expiring = await cur.fetchall()
+    
+    text = f"💎 **Управление подписками**\n\n"
+    text += f"👥 Активных подписок: {paid_count}\n\n"
+    
+    if expiring:
+        text += "⚠️ **Истекают в ближайшие 7 дней:**\n"
+        for user in expiring:
+            name = user[1] or user[2] or str(user[0])
+            end = user[3]
+            text += f"• `{user[0]}` - {name}\n  📅 до {end}\n"
+    else:
+        text += "✅ Нет подписок, истекающих в ближайшие 7 дней"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Выдать подписку", callback_data="admin_give_sub")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+@router.callback_query(F.data == "admin_give_sub")
+async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMINS:
+        return
+    
+    await callback.message.edit_text(
+        "➕ **Выдача подписки**\n\nВведите ID пользователя:",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AdminStates.waiting_user_id)
+
+@router.message(AdminStates.waiting_user_id)
+async def process_user_id_for_sub(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMINS:
+        return
+    
+    try:
+        user_id = int(message.text.strip())
+        user_data = await UserDB.get_user(user_id)
+        
+        if not user_data:
+            await message.answer("❌ Пользователь не найден")
+            await state.clear()
+            await show_admin_panel(message)
+            return
+        
+        await state.update_data(user_id=user_id)
+        await state.set_state(AdminStates.waiting_subscription_days)
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="7 дней", callback_data="sub_7")],
+            [InlineKeyboardButton(text="30 дней", callback_data="sub_30")],
+            [InlineKeyboardButton(text="90 дней", callback_data="sub_90")],
+            [InlineKeyboardButton(text="365 дней", callback_data="sub_365")],
+            [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")]
+        ])
+        
+        await message.answer(
+            f"👤 Пользователь: {user_data.get('first_name', user_id)}\n\nВыберите срок подписки:",
+            reply_markup=keyboard
+        )
+        
+    except ValueError:
+        await message.answer("❌ Неверный формат ID. Введите число.")
+
+@router.callback_query(F.data.startswith("sub_"))
+async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
+    days_map = {"sub_7": 7, "sub_30": 30, "sub_90": 90, "sub_365": 365}
+    days = days_map.get(callback.data, 7)
+    
+    data = await state.get_data()
+    user_id = data.get('user_id')
+    
+    if user_id:
+        await UserDB.set_subscription(user_id, days)
+        end_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d')
+        
+        await callback.message.edit_text(
+            f"✅ Подписка активирована!\n\n"
+            f"👤 Пользователь: {user_id}\n"
+            f"📅 Дней: {days}\n"
+            f"🗓️ Действует до: {end_date}"
+        )
+        
+        from loader import bot
+        try:
+            await bot.send_message(
+                user_id,
+                f"🎉 **Подписка активирована!**\n\n"
+                f"Доступна на {days} дней\n"
+                f"Действует до: {end_date}\n\n"
+                f"Спасибо за использование AstroBot! 🌟",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+    
+    await state.clear()
+    await show_admin_panel(callback)
+
+@router.callback_query(F.data.startswith("add_sub_"))
+async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMINS:
+        return
+    
+    user_id = int(callback.data.split("_")[2])
+    await state.update_data(user_id=user_id)
+    await state.set_state(AdminStates.waiting_subscription_days)
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="7 дней", callback_data="sub_7")],
+        [InlineKeyboardButton(text="30 дней", callback_data="sub_30")],
+        [InlineKeyboardButton(text="90 дней", callback_data="sub_90")],
+        [InlineKeyboardButton(text="365 дней", callback_data="sub_365")],
+        [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")]
+    ])
+    
+    await callback.message.edit_text(
+        f"👤 Пользователь: {user_id}\n\nВыберите срок подписки:",
+        reply_markup=keyboard
+    )
+
+# ==================== РАССЫЛКА ====================
+
+@router.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMINS:
+        return
+    
+    await callback.message.edit_text(
+        "📢 **Рассылка**\n\n"
+        "Введите текст сообщения для рассылки всем пользователям.\n\n"
+        "Доступно форматирование Markdown.\n\n"
+        "Чтобы отменить, отправьте /cancel",
+        parse_mode="Markdown"
+    )
+    await state.set_state(AdminStates.waiting_broadcast)
+
+@router.message(AdminStates.waiting_broadcast)
+async def process_broadcast(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMINS:
+        return
+    
+    text = message.text
+    
+    if text == "/cancel":
+        await state.clear()
+        await show_admin_panel(message)
+        return
+    
+    await state.clear()
+    
+    from database.db import DB_PATH
+    import aiosqlite
+    
+    msg = await message.answer("📢 Начинаю рассылку...")
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT user_id FROM users")
+        users = await cur.fetchall()
+    
+    success = 0
+    fail = 0
+    
+    from loader import bot
+    
+    for (user_id,) in users:
+        try:
+            await bot.send_message(user_id, text, parse_mode="Markdown")
+            success += 1
+            await asyncio.sleep(0.05)
+        except:
+            fail += 1
+    
+    await msg.edit_text(
+        f"✅ **Рассылка завершена**\n\n"
+        f"📤 Отправлено: {success}\n"
+        f"❌ Не доставлено: {fail}\n"
+        f"📊 Всего: {success + fail}"
+    )
+    
+    await show_admin_panel(message)
+
+# ==================== ЭКСПОРТ БД ====================
+
+@router.callback_query(F.data == "admin_export")
+async def admin_export(callback: CallbackQuery):
+    if callback.from_user.id not in ADMINS:
+        return
+    
+    from database.db import DB_PATH
+    
+    if not os.path.exists(DB_PATH):
+        await callback.message.edit_text("❌ База данных не найдена")
+        return
+    
+    await callback.message.edit_text("📦 Подготавливаю экспорт...")
+    
+    with open(DB_PATH, "rb") as f:
+        await callback.message.answer_document(
+            f,
+            caption=f"📁 **Экспорт базы данных**\n\n"
+                   f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                   f"📊 Размер: {os.path.getsize(DB_PATH) / 1024:.1f} KB"
+        )
+    
+    await callback.message.answer("✅ Экспорт выполнен")
+    await show_admin_panel(callback)
+
+# ==================== НАЗАД ====================
+
+@router.callback_query(F.data == "admin_back")
+async def admin_back(callback: CallbackQuery):
+    await show_admin_panel(callback)
+
+================================================================================
+# ФАЙЛ: handlers\ai_handler.py
+================================================================================
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+from states import AIQuestionStates
+from ai_service_n1n import ai_service
+from keyboards.main import ai_question_keyboard, back_to_menu_keyboard
+from utils.validators import validator
+import logging
+
+router = Router()
+logger = logging.getLogger(__name__)
+
+@router.callback_query(F.data == "ai_question")
+async def ai_question_menu(callback: CallbackQuery):
+    text = (
+        "🤖 **Астролог ИИ**\n\n"
+        "Задайте любой вопрос о гороскопах, знаках зодиака, "
+        "совместимости или влиянии планет!\n\n"
+        "📝 **Примеры:**\n"
+        "• Что ждёт Овна на этой неделе?\n"
+        "• Какая совместимость у Льва и Скорпиона?\n"
+        "• Как ретроградный Меркурий влияет на меня?"
+    )
+    await callback.message.edit_text(text, reply_markup=ai_question_keyboard())
+
+@router.callback_query(F.data == "ask_ai")
+async def start_ai_question(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AIQuestionStates.waiting_question)
+    await callback.message.answer(
+        "🔮 **Задайте ваш вопрос**\n\n"
+        "Напишите любой астрологический вопрос, и я дам вам ответ."
+    )
+
+@router.message(AIQuestionStates.waiting_question)
+async def process_ai_question(message: Message, state: FSMContext):
+    await state.clear()
+    
+    # Валидируем вопрос
+    valid, result = validator.validate_question(message.text)
+    
+    if not valid:
+        await message.answer(
+            f"❌ {result}\n\n"
+            "Пожалуйста, задайте осмысленный вопрос.",
+            reply_markup=ai_question_keyboard()
+        )
+        return
+    
+    # Отправляем сообщение о начале обработки
+    processing_msg = await message.answer("🔮 Астролог анализирует ваш вопрос...")
+    
+    # Получаем ответ от AI
+    response = await ai_service.process_question(
+        message.from_user.id, 
+        result
+    )
+    
+    # Удаляем сообщение о обработке
+    await processing_msg.delete()
+    
+    # Отправляем ответ
+    await message.answer(
+        f"🤖 **Ответ астролога:**\n\n{response['message']}",
+        reply_markup=ai_question_keyboard()
+    )
+
+@router.callback_query(F.data == "ai_examples")
+async def ai_examples(callback: CallbackQuery):
+    examples = (
+        "📝 **Примеры вопросов:**\n\n"
+        "🔮 **О гороскопе:**\n"
+        "• Что ждёт меня на этой неделе?\n"
+        "• Какой день самый удачный для Тельца?\n\n"
+        "💕 **О любви:**\n"
+        "• Подходит ли мне партнёр-Скорпион?\n"
+        "• Как улучшить отношения?\n\n"
+        "💼 **О карьере:**\n"
+        "• Стоит ли менять работу?\n"
+        "• Какая профессия подходит моему знаку?\n\n"
+        "✨ **Задавайте свои вопросы!**"
+    )
+    await callback.message.answer(examples)
+
+================================================================================
+# ФАЙЛ: handlers\compatibility.py
+================================================================================
+from datetime import datetime
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import StatesGroup, State
+from keyboards.main import main_menu_keyboard, back_to_menu_keyboard
+import random
+import hashlib
+import json
+
+router = Router()
+
+class CompatibilityStates(StatesGroup):
+    waiting_partner1 = State()
+    waiting_partner2 = State()
+
+# Кэш для хранения результатов совместимости
+compatibility_cache = {}
+
+# База данных знаков зодиака
+ZODIAC_SIGNS = ['Овен', 'Телец', 'Близнецы', 'Рак', 'Лев', 'Дева', 
+                'Весы', 'Скорпион', 'Стрелец', 'Козерог', 'Водолей', 'Рыбы']
+
+# Стихии знаков
+ELEMENTS = {
+    'Овен': 'Огонь', 'Лев': 'Огонь', 'Стрелец': 'Огонь',
+    'Телец': 'Земля', 'Дева': 'Земля', 'Козерог': 'Земля',
+    'Близнецы': 'Воздух', 'Весы': 'Воздух', 'Водолей': 'Воздух',
+    'Рак': 'Вода', 'Скорпион': 'Вода', 'Рыбы': 'Вода'
+}
+
+# Планеты-покровители
+RULING_PLANETS = {
+    'Овен': 'Марс', 'Телец': 'Венера', 'Близнецы': 'Меркурий',
+    'Рак': 'Луна', 'Лев': 'Солнце', 'Дева': 'Меркурий',
+    'Весы': 'Венера', 'Скорпион': 'Плутон', 'Стрелец': 'Юпитер',
+    'Козерог': 'Сатурн', 'Водолей': 'Уран', 'Рыбы': 'Нептун'
+}
+
+# Качества знаков (кардинальные, фиксированные, мутабельные)
+QUALITIES = {
+    'Овен': 'Кардинальный', 'Рак': 'Кардинальный', 'Весы': 'Кардинальный', 'Козерог': 'Кардинальный',
+    'Телец': 'Фиксированный', 'Лев': 'Фиксированный', 'Скорпион': 'Фиксированный', 'Водолей': 'Фиксированный',
+    'Близнецы': 'Мутабельный', 'Дева': 'Мутабельный', 'Стрелец': 'Мутабельный', 'Рыбы': 'Мутабельный'
+}
+
+def get_compatibility_key(sign1, sign2):
+    """Создаёт ключ для кэширования совместимости"""
+    signs = sorted([sign1.strip().lower(), sign2.strip().lower()])
+    return f"{signs[0]}_{signs[1]}"
+
+def get_detailed_compatibility(sign1, sign2):
+    """Возвращает детальный анализ совместимости двух знаков"""
+    
+    # Проверяем кэш
+    cache_key = get_compatibility_key(sign1, sign2)
+    if cache_key in compatibility_cache:
+        return compatibility_cache[cache_key]
+    
+    # Используем seed на основе знаков для стабильности (но разные для разных пар)
+    seed = int(hashlib.md5(f"{sign1}_{sign2}".encode()).hexdigest()[:8], 16)
+    random.seed(seed)
+    
+    element1 = ELEMENTS.get(sign1, 'Неизвестно')
+    element2 = ELEMENTS.get(sign2, 'Неизвестно')
+    planet1 = RULING_PLANETS.get(sign1, 'Неизвестно')
+    planet2 = RULING_PLANETS.get(sign2, 'Неизвестно')
+    quality1 = QUALITIES.get(sign1, 'Неизвестно')
+    quality2 = QUALITIES.get(sign2, 'Неизвестно')
+    
+    # Совместимость стихий
+    element_compatibility = {
+        ('Огонь', 'Огонь'): "Огонь с Огнём - страстный, но взрывной союз. Много энергии, но нужен баланс.",
+        ('Огонь', 'Земля'): "Огонь и Земля - разные стихии, но могут дополнять друг друга. Огонь вдохновляет, Земля стабилизирует.",
+        ('Огонь', 'Воздух'): "Огонь и Воздух - отличная пара! Воздух раздувает пламя, делая союз ярким и динамичным.",
+        ('Огонь', 'Вода'): "Огонь и Вода - сложное сочетание. Возможны как страсть, так и конфликты. Нужен компромисс.",
+        ('Земля', 'Земля'): "Земля с Землёй - стабильный, надёжный союз. Оба ценят практичность и комфорт.",
+        ('Земля', 'Воздух'): "Земля и Воздух - нейтральное сочетание. Воздух приносит идеи, Земля их реализует.",
+        ('Земля', 'Вода'): "Земля и Вода - гармоничный союз. Вода питает Землю, создавая плодородную почву для отношений.",
+        ('Воздух', 'Воздух'): "Воздух с Воздухом - интеллектуальный союз. Много общения, но не хватает глубины.",
+        ('Воздух', 'Вода'): "Воздух и Вода - переменчивое сочетание. Нужно учиться понимать друг друга.",
+        ('Вода', 'Вода'): "Вода с Водой - глубокий, эмоциональный союз. Вы чувствуете друг друга без слов."
+    }
+    
+    element_key = (element1, element2)
+    element_desc = element_compatibility.get(element_key, element_compatibility.get((element2, element1), "Средняя совместимость стихий."))
+    
+    # Совместимость планет
+    planet_desc = f"{planet1} и {planet2} создают уникальную динамику в ваших отношениях."
+    
+    # Общая оценка (0-100)
+    base_scores = {
+        ('Овен', 'Лев'): 95, ('Овен', 'Стрелец'): 98, ('Овен', 'Близнецы'): 75,
+        ('Телец', 'Дева'): 90, ('Телец', 'Козерог'): 95, ('Телец', 'Рак'): 70,
+        ('Близнецы', 'Весы'): 92, ('Близнецы', 'Водолей'): 88,
+        ('Рак', 'Скорпион'): 96, ('Рак', 'Рыбы'): 94,
+        ('Лев', 'Стрелец'): 97, ('Лев', 'Овен'): 93,
+        ('Дева', 'Козерог'): 92, ('Дева', 'Телец'): 88,
+        ('Весы', 'Водолей'): 91, ('Весы', 'Близнецы'): 85,
+        ('Скорпион', 'Рыбы'): 95, ('Скорпион', 'Рак'): 92,
+        ('Стрелец', 'Овен'): 96, ('Стрелец', 'Лев'): 94,
+        ('Козерог', 'Телец'): 90, ('Козерог', 'Дева'): 88,
+        ('Водолей', 'Весы'): 90, ('Водолей', 'Близнецы'): 86,
+        ('Рыбы', 'Рак'): 94, ('Рыбы', 'Скорпион'): 92
+    }
+    
+    key = (sign1, sign2)
+    score = base_scores.get(key, base_scores.get((sign2, sign1), random.randint(55, 90)))
+    
+    # Определяем уровень совместимости
+    if score >= 90:
+        level = "Идеальная совместимость! 🌟"
+    elif score >= 80:
+        level = "Отличная совместимость! ✨"
+    elif score >= 70:
+        level = "Хорошая совместимость 💫"
+    elif score >= 60:
+        level = "Средняя совместимость ⚡"
+    else:
+        level = "Сложная совместимость, но возможная 🌊"
+    
+    # Сильные стороны
+    strengths_list = [
+        "Взаимное уважение и понимание",
+        "Общие ценности и цели",
+        "Способность поддерживать друг друга",
+        "Хорошая сексуальная совместимость",
+        "Интеллектуальная близость",
+        "Эмоциональная глубина",
+        "Умение весело проводить время вместе",
+        "Взаимодополняющие качества"
+    ]
+    random.shuffle(strengths_list)
+    strengths = ", ".join(strengths_list[:3])
+    
+    # Слабые стороны
+    weaknesses_list = [
+        "Возможны конфликты из-за разного темперамента",
+        "Разные подходы к финансам",
+        "Несовпадение в бытовых привычках",
+        "Разный темп принятия решений",
+        "Эмоциональная несовместимость в стрессовых ситуациях",
+        "Разные социальные потребности",
+        "Конкуренция за лидерство"
+    ]
+    random.shuffle(weaknesses_list)
+    weaknesses = ", ".join(weaknesses_list[:3])
+    
+    # Рекомендации
+    recommendations_list = [
+        "Учитесь слушать и слышать друг друга",
+        "Проводите время на природе вместе",
+        "Найдите общее хобби",
+        "Чаще говорите о своих чувствах",
+        "Планируйте совместные путешествия",
+        "Создайте общие традиции",
+        "Уважайте личное пространство партнёра",
+        "Работайте над конфликтами конструктивно"
+    ]
+    random.shuffle(recommendations_list)
+    recommendation = random.choice(recommendations_list)
+    
+    # Символическое число
+    lucky_numbers = [2, 3, 5, 7, 8, 9, 11, 13, 17, 21]
+    lucky_number = random.choice(lucky_numbers)
+    
+    # Цвет отношений
+    colors = ["Красный", "Розовый", "Золотой", "Синий", "Зелёный", "Фиолетовый"]
+    color = random.choice(colors)
+    
+    result = {
+        'score': score,
+        'level': level,
+        'element1': element1,
+        'element2': element2,
+        'element_desc': element_desc,
+        'planet1': planet1,
+        'planet2': planet2,
+        'planet_desc': planet_desc,
+        'quality1': quality1,
+        'quality2': quality2,
+        'strengths': strengths,
+        'weaknesses': weaknesses,
+        'recommendation': recommendation,
+        'lucky_number': lucky_number,
+        'color': color
+    }
+    
+    # Сохраняем в кэш
+    compatibility_cache[cache_key] = result
+    
+    # Сброс random
+    random.seed()
+    
+    return result
+
+def parse_zodiac_input(text):
+    """Пытается извлечь знак зодиака из текста"""
+    text_lower = text.lower()
+    for sign in ZODIAC_SIGNS:
+        if sign.lower() in text_lower:
+            return sign
+    return None
+
+@router.callback_query(F.data == "compatibility")
+async def compatibility_start(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "💕 **АНАЛИЗ СОВМЕСТИМОСТИ**\n\n"
+        "Введите знак зодиака **первого партнёра**\n"
+        "Например: Овен, Телец, Лев, Скорпион и т.д.\n\n"
+        "Или отправьте дату рождения в формате ГГГГ-ММ-ДД",
+        reply_markup=back_to_menu_keyboard(),
+        parse_mode="Markdown"
+    )
+    await state.set_state(CompatibilityStates.waiting_partner1)
+
+@router.message(CompatibilityStates.waiting_partner1)
+async def process_partner1(message: Message, state: FSMContext):
+    text = message.text.strip()
+    
+    # Пробуем определить знак
+    sign1 = parse_zodiac_input(text)
+    
+    if not sign1:
+        await message.answer(
+            "❌ Не удалось определить знак зодиака.\n\n"
+            "Пожалуйста, введите название знака (например: Овен, Телец, Лев)\n"
+            "или дату рождения в формате ГГГГ-ММ-ДД",
+            parse_mode="Markdown"
+        )
+        return
+    
+    await state.update_data(sign1=sign1)
+    await state.set_state(CompatibilityStates.waiting_partner2)
+    
+    await message.answer(
+        f"✅ Первый знак: **{sign1}**\n\n"
+        "Теперь введите знак зодиака **второго партнёра**\n"
+        "или дату рождения:",
+        parse_mode="Markdown"
+    )
+
+@router.message(CompatibilityStates.waiting_partner2)
+async def process_partner2(message: Message, state: FSMContext):
+    text = message.text.strip()
+    
+    sign2 = parse_zodiac_input(text)
+    
+    if not sign2:
+        await message.answer(
+            "❌ Не удалось определить знак зодиака.\n\n"
+            "Пожалуйста, введите название знака (например: Овен, Телец, Лев)",
+            parse_mode="Markdown"
+        )
+        return
+    
+    data = await state.get_data()
+    sign1 = data['sign1']
+    
+    await state.clear()
+    
+    processing_msg = await message.answer("🔮 Рассчитываю совместимость...")
+    
+    # Получаем детальный анализ
+    result = get_detailed_compatibility(sign1, sign2)
+    
+    stars = "⭐" * (result['score'] // 10) + "☆" * (10 - (result['score'] // 10))
+    
+    response = f"""💕 **АНАЛИЗ СОВМЕСТИМОСТИ**
+
+**{sign1}** 💞 **{sign2}**
+
+{stars} **{result['score']}%** - {result['level']}
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ **АСТРОЛОГИЧЕСКИЕ ДАННЫЕ:**
+
+• Стихии: {result['element1']} и {result['element2']}
+• Планеты: {result['planet1']} и {result['planet2']}
+• Качества: {result['quality1']} и {result['quality2']}
+
+🌊 **ГАРМОНИЯ СТИХИЙ:**
+{result['element_desc']}
+
+🪐 **ПЛАНЕТАРНОЕ ВЛИЯНИЕ:**
+{result['planet_desc']}
+
+✅ **СИЛЬНЫЕ СТОРОНЫ:**
+{result['strengths']}
+
+⚠️ **СЛАБЫЕ СТОРОНЫ:**
+{result['weaknesses']}
+
+💫 **РЕКОМЕНДАЦИЯ:**
+{result['recommendation']}
+
+🍀 **СИМВОЛИЧЕСКОЕ ЧИСЛО:** {result['lucky_number']}
+🌈 **ЦВЕТ ОТНОШЕНИЙ:** {result['color']}
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔮 Помните: астрология - это руководство, а не приговор. Любовь и взаимопонимание могут преодолеть любые преграды!"""
+
+    await processing_msg.delete()
+    await message.answer(response, parse_mode="Markdown", reply_markup=main_menu_keyboard(message.from_user.id))
+
+================================================================================
+# ФАЙЛ: handlers\horoscope.py
+================================================================================
+from aiogram import Router, F
+from aiogram.types import CallbackQuery
+from keyboards.main import back_to_menu_keyboard
+import random
+import hashlib
+from datetime import datetime
+
+router = Router()
+
+# База данных гороскопов на каждый день недели
+HOROSCOPES_BASE = {
+    "Общий прогноз": [
+        "Сегодня звёзды выстраиваются в гармоничный аспект, создавая благоприятную энергетику для всех знаков зодиака. Это время, когда Вселенная поддерживает ваши начинания.",
+        "Планетарная конфигурация сегодня особенно интересна: Меркурий в трине с Юпитером, что способствует успеху в коммуникациях и обучении. Венера гармонизирует отношения.",
+        "Космическая энергия сегодня направлена на решение старых проблем. Луна в соединении с Сатурном поможет завершить давние дела и освободить место для нового."
+    ],
+    "Любовь и отношения": [
+        "Венера сегодня в гармоничном аспекте с Марсом, что усиливает привлекательность и магнетизм. Отличный день для романтических знакомств и укрепления отношений.",
+        "Луна в Весах создаёт потребность в гармонии в паре. Хороший день для откровенных разговоров с партнёром и решения накопившихся вопросов.",
+        "Энергия дня располагает к проявлению чувств. Не стесняйтесь говорить о любви и делать приятные сюрпризы близким."
+    ],
+    "Карьера и финансы": [
+        "Меркурий в хорошем аспекте способствует деловым переговорам. Удачный день для презентаций, собеседований и важных встреч.",
+        "Юпитер, планета удачи, сегодня особенно активен. Возможны неожиданные денежные поступления или удачные сделки.",
+        "Солнце освещает карьерные перспективы. Хороший день для планирования карьерного роста и постановки новых целей."
+    ],
+    "Здоровье и энергия": [
+        "Луна в огненном знаке придаёт бодрость и энергию. Отличное время для физических нагрузок и активного отдыха.",
+        "Марс активизирует жизненную силу. Займитесь спортом или просто больше двигайтесь - это пойдёт на пользу.",
+        "Солнце укрепляет иммунитет. Хороший день для закаливания и оздоровительных процедур."
+    ],
+    "Совет дня": [
+        "Доверьтесь своей интуиции сегодня - она особенно сильна и подскажет верные решения.",
+        "Будьте открыты к новым знакомствам и возможностям. Судьба приготовила для вас приятные сюрпризы.",
+        "Уделите время планированию будущего. Чёткий план поможет достичь желаемого быстрее.",
+        "Не бойтесь проявлять инициативу. Ваша активность сегодня будет вознаграждена."
+    ]
+}
+
+# Астрологические факты
+ASTRO_FACTS = [
+    "✨ Интересный факт: Знаки зодиака были выделены ещё в древнем Вавилоне около 2500 лет назад!",
+    "🌙 Луна меняет знак каждые 2-3 дня, поэтому лунный гороскоп может сильно отличаться от солнечного.",
+    "⭐ Меркурий становится ретроградным 3-4 раза в год на 3 недели, что может влиять на коммуникации.",
+    "🔮 В астрологии есть не только 12 знаков, но и 12 домов, каждый из которых отвечает за определённую сферу жизни.",
+    "💫 Ведическая астрология (Джйотиш) считается одной из древнейших астрологических систем в мире.",
+    "🌟 Каждый знак зодиака относится к одной из четырёх стихий: Огонь, Земля, Воздух или Вода.",
+    "🌞 Солнце переходит в следующий знак примерно 20-го числа каждого месяца.",
+    "🪐 Сатурн - самая медленная планета из видимых невооружённым глазом. Он находится в знаке около 2.5 лет.",
+    "✨ Точка весеннего равноденствия, которая сейчас находится в Рыбах, скоро перейдёт в Водолей - начнётся Эра Водолея!"
+]
+
+def get_daily_seed():
+    """Генерирует уникальный seed для каждого дня, чтобы гороскоп не повторялся"""
+    today = datetime.now().strftime('%Y-%m-%d')
+    return int(hashlib.md5(today.encode()).hexdigest()[:8], 16)
+
+def get_todays_horoscope():
+    """Возвращает гороскоп на сегодня, который не повторяется в разные дни"""
+    seed = get_daily_seed()
+    random.seed(seed)
+    
+    # Выбираем случайные прогнозы для каждого раздела
+    main = random.choice(HOROSCOPES_BASE["Общий прогноз"])
+    love = random.choice(HOROSCOPES_BASE["Любовь и отношения"])
+    career = random.choice(HOROSCOPES_BASE["Карьера и финансы"])
+    health = random.choice(HOROSCOPES_BASE["Здоровье и энергия"])
+    advice = random.choice(HOROSCOPES_BASE["Совет дня"])
+    fact = random.choice(ASTRO_FACTS)
+    
+    # Планетарная позиция дня (меняется каждый день)
+    planetary_aspects = [
+        "Солнце находится в гармоничном аспекте с Юпитером, создавая благоприятную энергию для роста.",
+        "Венера в соединении с Нептуном усиливает романтические настроения и творческие способности.",
+        "Меркурий в трине с Сатурном способствует глубокому анализу и структурированию мыслей.",
+        "Марс в секстиле с Плутоном даёт энергию для трансформации и достижения целей.",
+        "Луна в соединении с Венерой создаёт гармоничный эмоциональный фон для общения и любви.",
+        "Юпитер в оппозиции к Урану приносит неожиданные возможности и желание перемен.",
+        "Сатурн в трине с Меркурием помогает в обучении и усвоении новой информации."
+    ]
+    
+    # Разные варианты для ежедневного гороскопа (меняются в зависимости от дня недели)
+    weekday = datetime.now().weekday()
+    weekdays = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+    daily_energy = [
+        f"Энергия {weekdays[weekday]} акцентирует внимание на новых начинаниях и общении.",
+        f"В {weekdays[weekday]} Луна в благоприятном аспекте с Марсом, что добавляет решительности.",
+        f"Сегодня, в {weekdays[weekday]}, Венера усиливает чувствительность и романтические настроения.",
+        f"Энергетика {weekdays[weekday]} способствует завершению старых дел и планированию будущего."
+    ]
+    
+    random.seed(seed + 1)
+    aspect = random.choice(planetary_aspects)
+    daily = random.choice(daily_energy)
+    
+    # Сброс random для нормальной работы других частей кода
+    random.seed()
+    
+    return {
+        'main': main,
+        'love': love,
+        'career': career,
+        'health': health,
+        'advice': advice,
+        'fact': fact,
+        'aspect': aspect,
+        'daily': daily
+    }
+
+@router.callback_query(F.data == "daily_horoscope")
+async def daily_horoscope_handler(callback: CallbackQuery):
+    horoscope = get_todays_horoscope()
+    
+    text = f"""🌟 **АСТРОЛОГИЧЕСКИЙ ПРОГНОЗ НА СЕГОДНЯ**
+
+📅 {datetime.now().strftime('%d.%m.%Y')}
+
+🔮 **ОБЩАЯ ЭНЕРГЕТИКА:**
+{horoscope['main']}
+
+💫 **ПЛАНЕТАРНЫЕ ВЛИЯНИЯ:**
+{horoscope['aspect']}
+
+💖 **ЛЮБОВЬ И ОТНОШЕНИЯ:**
+{horoscope['love']}
+
+💼 **КАРЬЕРА И ФИНАНСЫ:**
+{horoscope['career']}
+
+🌿 **ЗДОРОВЬЕ И ЭНЕРГИЯ:**
+{horoscope['health']}
+
+💡 **СОВЕТ ДНЯ:**
+{horoscope['advice']}
+
+✨ **АСТРОЛОГИЧЕСКАЯ ИНФОРМАЦИЯ:**
+{horoscope['fact']}
+
+🌙 **ДНЕВНАЯ ЭНЕРГИЯ:**
+{horoscope['daily']}
+
+🔮 **АСПЕКТ ДНЯ:**
+Благоприятное время для важных решений с 14:00 до 16:00
+
+✨ Помните: астрология - это инструмент самопознания. Звёзды лишь указывают путь, но идти по нему предстоит вам!"""
+    
+    await callback.message.edit_text(text, reply_markup=back_to_menu_keyboard(), parse_mode="Markdown")
+
+================================================================================
+# ФАЙЛ: handlers\natal.py
+================================================================================
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
+from states import NatalChartStates
+from services.natal_service import natal_service
+from services.pdf_generator import pdf_gen
+from keyboards.main import natal_options_keyboard, main_menu_keyboard, back_to_menu_keyboard
+from database.db import UserDB
+from utils import md2_escape
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+router = Router()
+
+@router.callback_query(F.data == "natal_chart")
+async def natal_chart_menu(callback: CallbackQuery):
+    text = md2_escape("🔮 **Создание натальной карты**\n\nНатальная карта — это астрологическая карта рождения.")
+    await callback.message.edit_text(text, reply_markup=natal_options_keyboard(), parse_mode="MarkdownV2")
+
+@router.callback_query(F.data == "natal_input")
+async def natal_input_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(NatalChartStates.waiting_name)
+    await callback.message.answer("🌟 **Введите ваше имя:**", parse_mode="Markdown")
+
+@router.message(NatalChartStates.waiting_name)
+async def natal_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await state.set_state(NatalChartStates.waiting_birth_date)
+    await message.answer("📅 **Введите дату рождения (ГГГГ-ММ-ДД)**\nНапример: 1990-05-15", parse_mode="Markdown")
+
+@router.message(NatalChartStates.waiting_birth_date)
+async def natal_date(message: Message, state: FSMContext):
+    await state.update_data(birth_date=message.text)
+    await state.set_state(NatalChartStates.waiting_birth_time)
+    await message.answer("⏰ **Введите время рождения (ЧЧ:ММ)**\nЕсли неизвестно, введите 12:00", parse_mode="Markdown")
+
+@router.message(NatalChartStates.waiting_birth_time)
+async def natal_time(message: Message, state: FSMContext):
+    await state.update_data(birth_time=message.text)
+    await state.set_state(NatalChartStates.waiting_birth_place)
+    await message.answer("📍 **Введите место рождения**\nНапример: Москва, Россия", parse_mode="Markdown")
+
+@router.message(NatalChartStates.waiting_birth_place)
+async def natal_finish(message: Message, state: FSMContext):
+    await state.update_data(birth_place=message.text)
+    data = await state.get_data()
+    await state.clear()
+    processing_msg = await message.answer("🔮 **Создаю натальную карту...**", parse_mode="Markdown")
+    try:
+        # create_natal_chart - синхронная функция, вызываем без await
+        chart_data = natal_service.create_natal_chart(
+            data['name'], 
+            data['birth_date'], 
+            data['birth_time'], 
+            data['birth_place']
+        )
+        await UserDB.update_birth_data(message.from_user.id, data['birth_date'], data['birth_time'], data['birth_place'])
+        await processing_msg.delete()
+        
+        svg_path = natal_service.generate_svg_chart(chart_data)
+        if svg_path and os.path.exists(svg_path):
+            svg_file = FSInputFile(svg_path)
+            await message.answer_document(svg_file, caption="🔮 **Схема натальной карты**")
+            os.remove(svg_path)
+        
+        report_text = natal_service.generate_report_text(chart_data)
+        await message.answer(report_text, parse_mode="Markdown")
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📄 Скачать PDF-отчёт", callback_data="pdf_natal_from_chart")],
+            [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
+        ])
+        await message.answer("✨ **Натальная карта готова!**", reply_markup=keyboard, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Ошибка: {e}")
+        await processing_msg.edit_text(f"❌ **Ошибка:** {str(e)}", parse_mode="Markdown")
+
+@router.callback_query(F.data == "pdf_natal_from_chart")
+async def pdf_natal_from_chart(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_data = await UserDB.get_user(user_id)
+    if not user_data or not user_data.get('birth_date'):
+        await callback.message.edit_text("❌ Нужны данные о рождении.", reply_markup=back_to_menu_keyboard())
+        return
+    processing_msg = await callback.message.edit_text("📄 **Создаю PDF...**", parse_mode="Markdown")
+    try:
+        chart_data = natal_service.create_natal_chart(
+            user_data.get('first_name', 'Пользователь'),
+            user_data['birth_date'],
+            user_data.get('birth_time', '12:00'),
+            user_data.get('birth_place', 'Не указано')
+        )
+        pdf_data = {
+            'user_name': user_data.get('first_name', 'Пользователь'),
+            'birth_date': user_data['birth_date'],
+            'birth_time': user_data.get('birth_time', '12:00'),
+            'birth_place': user_data.get('birth_place', 'Не указано'),
+            'sun_sign': chart_data['sun_sign'],
+            'element': chart_data['element'],
+            'quality': chart_data['quality'],
+            'ascendant': chart_data['ascendant'],
+            'planets': chart_data['planets'],
+            'houses': chart_data['houses']
+        }
+        pdf_path = pdf_gen.create_natal_chart_report_pdf(pdf_data)
+        await processing_msg.delete()
+        pdf_file = FSInputFile(pdf_path)
+        await callback.message.answer_document(pdf_file, caption=f"🔮 Натальная карта {user_data.get('first_name', 'Пользователь')}")
+        await callback.message.answer("📌 **Выберите действие:**", reply_markup=main_menu_keyboard(user_id))
+        os.remove(pdf_path)
+    except Exception as e:
+        logger.error(f"Ошибка PDF: {e}")
+        await processing_msg.edit_text(f"❌ Ошибка: {str(e)}", reply_markup=back_to_menu_keyboard())
+
+================================================================================
+# ФАЙЛ: handlers\pdf_handler.py
+================================================================================
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, FSInputFile
+from services.pdf_generator import pdf_gen
+from keyboards.main import pdf_type_keyboard, back_to_menu_keyboard, main_menu_keyboard
+from database.db import UserDB
+from ai_service_n1n import ai_service
+import logging
+import os
+import traceback
+from datetime import datetime
+
+router = Router()
+logger = logging.getLogger(__name__)
+
+@router.callback_query(F.data == "generate_pdf") 
+async def pdf_menu(callback: CallbackQuery):
+    await callback.message.edit_text(
+        "📄 **Генерация PDF отчётов**\n\n"
+        "Выберите тип отчёта:\n"
+        "🔮 Натальная карта\n"
+        "🌙 Личный гороскоп",
+        reply_markup=pdf_type_keyboard()
+    )
+
+@router.callback_query(F.data == "pdf_natal")
+async def pdf_natal(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_data = await UserDB.get_user(user_id)
+    
+    if not user_data or not user_data.get('birth_date'):
+        await callback.message.edit_text(
+            "❌ Для создания PDF натальной карты нужны данные о рождении.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    msg = await callback.message.edit_text("📄 Создаю PDF натальной карты...")
+    
+    try:
+        # Подготавливаем данные
+        data = {
+            'name': user_data.get('first_name', 'Пользователь'),
+            'birth_date': user_data.get('birth_date', ''),
+            'birth_time': user_data.get('birth_time', '12:00'),
+            'birth_place': user_data.get('birth_place', 'Не указано')
+        }
+        
+        # Создаем PDF
+        pdf_path = pdf_gen.create_natal_chart_pdf(data)
+        
+        await msg.delete()
+        
+        # Отправляем PDF
+        pdf_file = FSInputFile(pdf_path)
+        await callback.message.answer_document(
+            pdf_file,
+            caption="🔮 Ваша натальная карта"
+        )
+        
+        # Возвращаем в главное меню
+        await callback.message.answer(
+            "Выберите действие:",
+            reply_markup=main_menu_keyboard(user_id)
+        )
+        
+        # Удаляем временный файл
+        os.remove(pdf_path)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при создании PDF: {e}\n{traceback.format_exc()}")
+        await msg.edit_text(f"❌ Ошибка: {str(e)}")
+
+@router.callback_query(F.data == "pdf_horoscope")
+async def pdf_horoscope(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_data = await UserDB.get_user(user_id)
+    
+    msg = await callback.message.edit_text("🌙 Создаю PDF гороскопа...")
+    
+    try:
+        # Получаем имя пользователя
+        user_name = user_data.get('first_name', 'Пользователь') if user_data else 'Пользователь'
+        
+        # Получаем гороскоп от AI с правильным промптом
+        today = datetime.now().strftime("%d.%m.%Y")
+        
+        # Исправленный промпт - запрещаем AI упоминать конкретные даты
+        response = await ai_service.process_question(
+            user_id, 
+            f"Составь краткий гороскоп для {user_name} на сегодня. НЕ УПОМИНАЙ конкретные числа и даты в ответе. Просто опиши, что ждет человека сегодня."
+        )
+        
+        # Подготавливаем данные для PDF
+        pdf_data = {
+            'user_name': user_name,
+            'date': today,
+            'horoscope': response['message']
+        }
+        
+        # Создаем PDF
+        pdf_path = pdf_gen.create_horoscope_pdf(pdf_data)
+        
+        await msg.delete()
+        
+        # Отправляем PDF
+        pdf_file = FSInputFile(pdf_path)
+        await callback.message.answer_document(
+            pdf_file,
+            caption="🌙 Ваш гороскоп"
+        )
+        
+        # Возвращаем в главное меню
+        await callback.message.answer(
+            "Выберите действие:",
+            reply_markup=main_menu_keyboard(user_id)
+        )
+        
+        # Удаляем временный файл
+        os.remove(pdf_path)
+        
+    except Exception as e:
+        logger.error(f"Ошибка при создании PDF гороскопа: {e}\n{traceback.format_exc()}")
+        await msg.edit_text(f"❌ Ошибка: {str(e)}")
+
+================================================================================
+# ФАЙЛ: handlers\profile.py
+================================================================================
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, Message
+from aiogram.fsm.context import FSMContext
+from database.db import UserDB
+from keyboards.main import profile_keyboard, back_to_menu_keyboard
+from states import ProfileEditStates
+from datetime import datetime
+
+router = Router()
+
+@router.callback_query(F.data == "profile")
+async def profile_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_data = await UserDB.get_user(user_id)
+    
+    if not user_data:
+        await callback.message.edit_text(
+            "❌ Профиль не найден. Нажмите /start для регистрации.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+    
+    # Определяем знак зодиака
+    zodiac = "Не определён"
+    if user_data.get('birth_date'):
+        try:
+            from core.ai_engine import astro_ai
+            birth_date = datetime.strptime(user_data['birth_date'], '%Y-%m-%d')
+            zodiac = astro_ai.get_zodiac_sign(birth_date)
+        except:
+            pass
+    
+    status = "💎 Премиум" if user_data.get('is_paid') else "🆓 Бесплатный"
+    
+    text = f"""👤 **Ваш профиль**
+
+🌟 **Основная информация:**
+• Имя: {user_data.get('first_name', 'Не указано')}
+• Знак зодиака: {zodiac}
+• Дата рождения: {user_data.get('birth_date', 'Не указано')}
+• Время рождения: {user_data.get('birth_time', 'Не указано')}
+• Место рождения: {user_data.get('birth_place', 'Не указано')}
+
+⭐ **Статус:** {status}
+📅 **Подписка до:** {user_data.get('subscription_end', 'Нет активной')}
+
+📌 **Для обновления данных используйте кнопку ниже.**"""
+    
+    await callback.message.edit_text(
+        text,
+        reply_markup=profile_keyboard(),
+        parse_mode="Markdown"
+    )
+
+@router.callback_query(F.data == "profile_edit")
+async def profile_edit_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ProfileEditStates.waiting_birth_date)
+    await callback.message.edit_text(
+        "📝 **Редактирование профиля**\n\nВведите дату рождения (ГГГГ-ММ-ДД):",
+        parse_mode="Markdown"
+    )
+
+@router.message(ProfileEditStates.waiting_birth_date)
+async def profile_birth_date(message: Message, state: FSMContext):
+    await state.update_data(birth_date=message.text)
+    await state.set_state(ProfileEditStates.waiting_birth_time)
+    await message.answer("⏰ Введите время рождения (ЧЧ:ММ) или /skip:")
+
+@router.message(ProfileEditStates.waiting_birth_time)
+async def profile_birth_time(message: Message, state: FSMContext):
+    await state.update_data(birth_time=message.text if message.text != '/skip' else '12:00')
+    await state.set_state(ProfileEditStates.waiting_birth_place)
+    await message.answer("📍 Введите место рождения или /skip:")
+
+@router.message(ProfileEditStates.waiting_birth_place)
+async def profile_finish(message: Message, state: FSMContext):
+    data = await state.get_data()
+    await state.clear()
+    
+    birth_place = message.text if message.text != '/skip' else 'Не указано'
+    
+    await UserDB.update_birth_data(
+        message.from_user.id,
+        data.get('birth_date'),
+        data.get('birth_time'),
+        birth_place
+    )
+    
+    await message.answer(
+        "✅ **Профиль успешно обновлён!**\n\nТеперь астрологические прогнозы будут более точными.",
+        parse_mode="Markdown",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+================================================================================
+# ФАЙЛ: handlers\start.py
+================================================================================
+from aiogram import Router, F
+from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery
+from database.db import UserDB
+from keyboards.main import welcome_keyboard, main_menu_keyboard, payment_keyboard
+from utils import md2_escape
+
+router = Router()
+
+@router.message(Command("start"))
+async def start_handler(message: Message):
+    user_id = message.from_user.id
+    username = message.from_user.username or ""
+    first_name = message.from_user.first_name or ""
+    
+    await UserDB.create_user(user_id, username, first_name)
+    
+    text = md2_escape(f"🌟 Добро пожаловать в AstroBot v2 PRO, {first_name}!\n\nЯ помогу вам узнать всё о вашей судьбе, звёздах и планетах.")
+    
+    await message.answer(text, reply_markup=welcome_keyboard(), parse_mode="MarkdownV2")
+
+@router.callback_query(F.data == "check_status")
+async def check_status(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    is_paid = await UserDB.is_paid(user_id)
+    
+    if is_paid:
+        await callback.message.edit_text(
+            md2_escape("Главное меню AstroBot v2 PRO:"),
+            reply_markup=main_menu_keyboard(user_id),
+            parse_mode="MarkdownV2"
+        )
+    else:
+        await callback.message.edit_text(
+            md2_escape("Выберите тариф:"),
+            reply_markup=payment_keyboard(),
+            parse_mode="MarkdownV2"
+        )
+
+@router.callback_query(F.data == "main_menu")
+async def main_menu(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    await callback.message.edit_text(
+        md2_escape("Главное меню:"),
+        reply_markup=main_menu_keyboard(user_id),
+        parse_mode="MarkdownV2"
+    )
+
+@router.callback_query(F.data.startswith("pay_"))
+async def payment_handler(callback: CallbackQuery):
+    plan = callback.data.split("_")[1]
+    days = {"7": 7, "30": 30, "90": 90}.get(plan, 7)
+    
+    await UserDB.set_subscription(callback.from_user.id, days)
+    
+    await callback.message.edit_text(
+        md2_escape("✅ Подписка активирована!"),
+        reply_markup=main_menu_keyboard(callback.from_user.id),
+        parse_mode="MarkdownV2"
+    )
+
+================================================================================
+# ФАЙЛ: handlers\__init__.py
+================================================================================
+from .start import router as start_router
+from .ai_handler import router as ai_router
+from .natal import router as natal_router
+from .admin_simple import router as admin_router
+from .horoscope import router as horoscope_router
+from .profile import router as profile_router
+from .pdf_handler import router as pdf_router
+
+__all__ = [
+    'start_router',
+    'ai_router',
+    'natal_router',
+    'admin_router',
+    'horoscope_router',
+    'profile_router',
+    'pdf_router'
+]
+
+================================================================================
+# ФАЙЛ: keyboards\admin.py
+================================================================================
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import ADMINS
+
+def welcome_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Продолжить", callback_data="check_status")
+    return kb.as_markup()
+
+def payment_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="7 дней - 299 руб", callback_data="pay_7")
+    kb.button(text="30 дней - 999 руб", callback_data="pay_30") 
+    kb.button(text="90 дней - 2499 руб", callback_data="pay_90")
+    kb.adjust(1)
+    return kb.as_markup()
+
+def main_menu_keyboard(user_id):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔮 Натальная карта", callback_data="natal_chart")
+    kb.button(text="✨ Личный вопрос", callback_data="ai_question")
+    kb.button(text="🌙 Гороскоп дня", callback_data="daily_horoscope")
+    kb.button(text="💕 Совместимость", callback_data="compatibility")
+    kb.button(text="👤 Профиль", callback_data="profile")
+    kb.button(text="📄 PDF отчёт", callback_data="generate_pdf")
+    
+    # Админ-панель для админов
+    if user_id in ADMINS:
+        kb.button(text="👑 Админ-панель", callback_data="admin_panel")
+    
+    kb.adjust(2)
+    return kb.as_markup()
+
+def natal_options_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Ввести данные", callback_data="natal_input")
+    kb.button(text="Назад", callback_data="main_menu")
+    return kb.as_markup()
+
+def ai_question_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Новый вопрос", callback_data="ask_ai")
+    kb.button(text="Примеры вопросов", callback_data="ai_examples")
+    kb.button(text="Главное меню", callback_data="main_menu")
+    kb.adjust(1)
+    return kb.as_markup()
+
+def compatibility_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Анализ совместимости", callback_data="compat_analyze")
+    kb.button(text="Назад", callback_data="main_menu")
+    return kb.as_markup()
+
+def profile_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Редактировать", callback_data="profile_edit")
+    kb.button(text="Главное меню", callback_data="main_menu")
+    return kb.as_markup()
+
+def pdf_type_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Натальная карта", callback_data="pdf_natal")
+    kb.button(text="Личный гороскоп", callback_data="pdf_horoscope")
+    kb.button(text="Назад", callback_data="main_menu")
+    return kb.as_markup()
+
+def back_to_menu_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Главное меню", callback_data="main_menu")
+    return kb.as_markup()
+
+def confirm_keyboard(action: str):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Да", callback_data=f"confirm_{action}")
+    kb.button(text="Нет", callback_data="cancel")
+    kb.adjust(2)
+    return kb.as_markup()
+
+================================================================================
+# ФАЙЛ: keyboards\main.py
+================================================================================
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from config import ADMINS
+
+def welcome_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🚀 Продолжить", callback_data="check_status")
+    return kb.as_markup()
+
+def payment_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔥 7 дней — 299₽", callback_data="pay_7")
+    kb.button(text="💎 30 дней — 999₽", callback_data="pay_30")
+    kb.button(text="👑 90 дней — 2499₽", callback_data="pay_90")
+    kb.adjust(1)
+    return kb.as_markup()
+
+def main_menu_keyboard(user_id):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔮 Натальная карта", callback_data="natal_chart")
+    kb.button(text="✨ Личный вопрос", callback_data="ai_question")
+    kb.button(text="🌙 Гороскоп дня", callback_data="daily_horoscope")
+    kb.button(text="💕 Совместимость", callback_data="compatibility")
+    kb.button(text="👤 Профиль", callback_data="profile")
+    kb.button(text="📄 PDF отчёт", callback_data="generate_pdf")
+    
+    if user_id in ADMINS:
+        kb.button(text="👑 Админ-панель", callback_data="admin_panel")
+    
+    kb.adjust(2)
+    return kb.as_markup()
+
+def natal_options_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📝 Ввести данные", callback_data="natal_input")
+    kb.button(text="🔙 Назад", callback_data="main_menu")
+    return kb.as_markup()
+
+def ai_question_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💭 Новый вопрос", callback_data="ask_ai")
+    kb.button(text="📝 Примеры вопросов", callback_data="ai_examples")
+    kb.button(text="🔙 Главное меню", callback_data="main_menu")
+    kb.adjust(1)
+    return kb.as_markup()
+
+def compatibility_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💑 Анализ совместимости", callback_data="compat_analyze")
+    kb.button(text="🔙 Назад", callback_data="main_menu")
+    return kb.as_markup()
+
+def profile_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📝 Редактировать", callback_data="profile_edit")
+    kb.button(text="🔙 Главное меню", callback_data="main_menu")
+    return kb.as_markup()
+
+def pdf_type_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔮 Натальная карта", callback_data="pdf_natal")
+    kb.button(text="🌙 Личный гороскоп", callback_data="pdf_horoscope")
+    kb.button(text="🔙 Назад", callback_data="main_menu")
+    return kb.as_markup()
+
+def back_to_menu_keyboard():
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔙 Главное меню", callback_data="main_menu")
+    return kb.as_markup()
+
+================================================================================
+# ФАЙЛ: keyboards\__init__.py
+================================================================================
+
+
+================================================================================
+# ФАЙЛ: services\natal_service.py
+================================================================================
+import logging
+import uuid
+import os
+from datetime import datetime
+from typing import Dict, Any, Optional, Tuple
+from vedastro import *
+
+logger = logging.getLogger(__name__)
+
+class NatalService:
+    CITY_COORDS = {
+        # Беларусь
+        'минск': (53.9045, 27.5615),
+        'гомель': (52.4345, 30.9754),
+        'могилёв': (53.8945, 30.3314),
+        'витебск': (55.1848, 30.2016),
+        'гродно': (53.6694, 23.8131),
+        'брест': (52.0976, 23.7341),
+        'барановичи': (53.1333, 26.0167),
+        'пинск': (52.1129, 26.1025),
+        'орша': (54.5154, 30.4028),
+        'мозырь': (52.0495, 29.2456),
+        'солигорск': (52.7833, 27.5333),
+        'новополоцк': (55.5333, 28.65),
+        'лида': (53.8833, 25.3),
+        'волковыск': (53.15, 24.4667),
+        'слоним': (53.0833, 25.3167),
+        # Россия
+        'москва': (55.7558, 37.6173),
+        'санкт-петербург': (59.9343, 30.3351),
+        'новосибирск': (55.0084, 82.9357),
+        'екатеринбург': (56.8389, 60.6057),
+        'казань': (55.7887, 49.1221),
+        'нижний новгород': (56.2965, 43.9361),
+        'самара': (53.1959, 50.1002),
+        'омск': (54.9885, 73.3242),
+        'челябинск': (55.1644, 61.4368),
+        'ростов-на-дону': (47.2357, 39.7015),
+        'уфа': (54.7388, 55.9721),
+        'волгоград': (48.708, 44.5133),
+        'пермь': (58.0105, 56.2294),
+        'красноярск': (56.0097, 92.7917),
+        'воронеж': (51.6605, 39.2003),
+        # Украина
+        'киев': (50.4501, 30.5234),
+        'харьков': (49.9935, 36.2304),
+        'одесса': (46.4825, 30.7233),
+        'днепр': (48.4647, 35.0462),
+        'донецк': (48.0159, 37.8029),
+        'львов': (49.8397, 24.0297),
+        'запорожье': (47.8388, 35.1396),
+        # Другие страны
+        'варшава': (52.2297, 21.0122),
+        'вильнюс': (54.6872, 25.2797),
+        'рига': (56.9496, 24.1052),
+        'таллин': (59.437, 24.7536),
+        'берлин': (52.52, 13.405),
+        'париж': (48.8566, 2.3522),
+        'лондон': (51.5074, -0.1278),
+        'нью-йорк': (40.7128, -74.006),
+        'лос-анджелес': (34.0522, -118.2437),
+    }
+    
+    TIMEZONES = {
+        'минск': '+03:00', 'гомель': '+03:00', 'могилёв': '+03:00', 'витебск': '+03:00',
+        'гродно': '+03:00', 'брест': '+03:00', 'барановичи': '+03:00',
+        'москва': '+03:00', 'санкт-петербург': '+03:00', 'новосибирск': '+07:00',
+        'екатеринбург': '+05:00', 'казань': '+03:00', 'самара': '+04:00',
+        'киев': '+02:00', 'харьков': '+02:00', 'одесса': '+02:00',
+        'варшава': '+01:00', 'вильнюс': '+02:00', 'рига': '+02:00',
+        'берлин': '+01:00', 'париж': '+01:00', 'лондон': '+00:00',
+    }
+    
+    def __init__(self):
+        Calculate.SetAPIKey('FreeAPIUser')
+        Calculate.SetAyanamsa(Ayanamsa.Lahiri)
+        logger.info("VedAstro инициализирован")
+    
+    def get_coordinates(self, place: str) -> Tuple[float, float, str]:
+        place_lower = place.lower().strip()
+        # Ищем по точному совпадению или вхождению
+        for city, coords in self.CITY_COORDS.items():
+            if city in place_lower or place_lower in city:
+                tz = self.TIMEZONES.get(city, '+03:00')
+                logger.info(f"Найден город: {city}, координаты: {coords}, часовой пояс: {tz}")
+                return coords[0], coords[1], tz
+        # По умолчанию Москва
+        logger.warning(f"Город '{place}' не найден, использую Москву")
+        return 55.7558, 37.6173, '+03:00'
+    
+    def validate_date(self, date_str: str) -> Tuple[bool, Optional[Tuple[int, int, int]]]:
+        try:
+            year, month, day = map(int, date_str.split('-'))
+            birth_date = datetime(year, month, day)
+            if birth_date > datetime.now():
+                return False, None
+            if (datetime.now() - birth_date).days / 365.25 > 120:
+                return False, None
+            return True, (year, month, day)
+        except:
+            return False, None
+    
+    def validate_time(self, time_str: str) -> Tuple[bool, Optional[Tuple[int, int]]]:
+        try:
+            if not time_str or time_str == '/skip':
+                return True, (12, 0)
+            hour, minute = map(int, time_str.split(':'))
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                return True, (hour, minute)
+            return False, None
+        except:
+            return False, None
+    
+    def _create_time_object(self, birth_date: str, birth_time: str, birth_place: str) -> Time:
+        year, month, day = map(int, birth_date.split('-'))
+        hour, minute = map(int, birth_time.split(':'))
+        lat, lon, tz = self.get_coordinates(birth_place)
+        geo = GeoLocation(birth_place, lon, lat)
+        logger.info(f"Создание Time объекта: {year}-{month}-{day} {hour}:{minute}, tz={tz}, lat={lat}, lon={lon}")
+        return Time(hour=hour, minute=minute, day=day, month=month, year=year, offset=tz, geolocation=geo)
+    
+    def create_natal_chart(self, name: str, birth_date: str, birth_time: str, birth_place: str) -> Dict[str, Any]:
+        logger.info(f"Создание натальной карты для {name}, дата: {birth_date}, время: {birth_time}, место: {birth_place}")
+        
+        valid, date_parts = self.validate_date(birth_date)
+        if not valid:
+            raise ValueError("Неверная дата рождения")
+        valid, time_parts = self.validate_time(birth_time)
+        if not valid:
+            raise ValueError("Неверное время рождения")
+        hour, minute = time_parts if time_parts else (12, 0)
+        birth_time_corrected = f"{hour:02d}:{minute:02d}"
+        
+        try:
+            birth_time_obj = self._create_time_object(birth_date, birth_time_corrected, birth_place)
+            
+            planets = []
+            planet_names = ['Sun', 'Moon', 'Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn']
+            planet_names_ru = ['Солнце', 'Луна', 'Меркурий', 'Венера', 'Марс', 'Юпитер', 'Сатурн']
+            planet_symbols = ['☉', '☽', '☿', '♀', '♂', '♃', '♄']
+            
+            for i, eng_name in enumerate(planet_names):
+                try:
+                    planet_data = Calculate.AllPlanetData(getattr(PlanetName, eng_name), birth_time_obj)
+                    sign_name = planet_data.Sign.Name if hasattr(planet_data, 'Sign') else 'Неизвестно'
+                    house_num = planet_data.HousePlanetIsIn if hasattr(planet_data, 'HousePlanetIsIn') else '?'
+                    retrograde = planet_data.Retrograde if hasattr(planet_data, 'Retrograde') else False
+                    logger.info(f"{planet_names_ru[i]}: знак {sign_name}, дом {house_num}, ретроград {retrograde}")
+                    planets.append({
+                        'name': planet_names_ru[i],
+                        'symbol': planet_symbols[i],
+                        'sign': sign_name,
+                        'house': str(house_num),
+                        'retrograde': retrograde,
+                    })
+                except Exception as e:
+                    logger.error(f"Ошибка получения данных для {eng_name}: {e}")
+                    planets.append({
+                        'name': planet_names_ru[i],
+                        'symbol': planet_symbols[i],
+                        'sign': 'Неизвестно',
+                        'house': '?',
+                        'retrograde': False,
+                    })
+            
+            houses = []
+            for i in range(1, 13):
+                try:
+                    house_data = Calculate.AllHouseData(i, birth_time_obj)
+                    sign_name = house_data.SignName if hasattr(house_data, 'SignName') else 'Неизвестно'
+                    houses.append({'number': i, 'sign': sign_name})
+                except Exception as e:
+                    logger.error(f"Ошибка получения данных для дома {i}: {e}")
+                    houses.append({'number': i, 'sign': 'Неизвестно'})
+            
+            sun_sign = planets[0]['sign'] if planets else 'Неизвестно'
+            elements = {'Овен': 'Огонь', 'Лев': 'Огонь', 'Стрелец': 'Огонь', 'Телец': 'Земля', 'Дева': 'Земля', 'Козерог': 'Земля', 'Близнецы': 'Воздух', 'Весы': 'Воздух', 'Водолей': 'Воздух', 'Рак': 'Вода', 'Скорпион': 'Вода', 'Рыбы': 'Вода'}
+            qualities = {'Овен': 'Кардинальный', 'Рак': 'Кардинальный', 'Весы': 'Кардинальный', 'Козерог': 'Кардинальный', 'Телец': 'Фиксированный', 'Лев': 'Фиксированный', 'Скорпион': 'Фиксированный', 'Водолей': 'Фиксированный', 'Близнецы': 'Мутабельный', 'Дева': 'Мутабельный', 'Стрелец': 'Мутабельный', 'Рыбы': 'Мутабельный'}
+            ascendant = houses[0]['sign'] if houses else 'Неизвестно'
+            
+            return {
+                'sun_sign': sun_sign,
+                'element': elements.get(sun_sign, 'Неизвестно'),
+                'quality': qualities.get(sun_sign, 'Неизвестно'),
+                'ascendant': ascendant,
+                'planets': planets,
+                'houses': houses,
+                'birth_info': {'name': name, 'date': birth_date, 'time': birth_time_corrected, 'place': birth_place}
+            }
+        except Exception as e:
+            logger.error(f"Критическая ошибка VedAstro: {e}")
+            raise ValueError(f"Ошибка расчёта: {str(e)}")
+    
+    def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
+        try:
+            filename = f"natal_chart_{uuid.uuid4().hex}.svg"
+            svg = f'''<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
+<rect width="800" height="800" fill="#1a2a3a"/>
+<circle cx="400" cy="400" r="350" fill="none" stroke="#c9a959" stroke-width="3"/>
+<circle cx="400" cy="400" r="280" fill="none" stroke="#c9a959" stroke-width="2"/>
+<circle cx="400" cy="400" r="200" fill="none" stroke="#c9a959" stroke-width="1.5"/>
+<circle cx="400" cy="400" r="100" fill="none" stroke="#c9a959" stroke-width="1"/>
+<line x1="400" y1="50" x2="400" y2="750" stroke="#c9a959" stroke-width="1" opacity="0.5"/>
+<line x1="50" y1="400" x2="750" y2="400" stroke="#c9a959" stroke-width="1" opacity="0.5"/>
+<text x="400" y="65" text-anchor="middle" fill="#c9a959" font-size="22">♈</text>
+<text x="735" y="400" text-anchor="middle" fill="#c9a959" font-size="22">♉</text>
+<text x="400" y="755" text-anchor="middle" fill="#c9a959" font-size="22">♊</text>
+<text x="65" y="400" text-anchor="middle" fill="#c9a959" font-size="22">♋</text>
+<text x="648" y="152" text-anchor="middle" fill="#c9a959" font-size="22">♌</text>
+<text x="152" y="648" text-anchor="middle" fill="#c9a959" font-size="22">♍</text>
+<text x="152" y="152" text-anchor="middle" fill="#c9a959" font-size="22">♎</text>
+<text x="648" y="648" text-anchor="middle" fill="#c9a959" font-size="22">♏</text>
+<text x="400" y="120" text-anchor="middle" fill="#c9a959" font-size="18" font-weight="bold">ASC: {chart_data['ascendant']}</text>
+<text x="400" y="30" text-anchor="middle" fill="#c9a959" font-size="16" font-weight="bold">Натальная карта: {chart_data['birth_info']['name']}</text>
+<text x="400" y="780" text-anchor="middle" fill="#c9a959" font-size="12">{chart_data['birth_info']['date']} в {chart_data['birth_info']['time']}, {chart_data['birth_info']['place']}</text>
+</svg>'''
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(svg)
+            return filename
+        except Exception as e:
+            logger.error(f"Ошибка SVG: {e}")
+            return None
+    
+    def generate_report_text(self, chart_data: Dict[str, Any]) -> str:
+        report = []
+        report.append("🌟 **НАТАЛЬНАЯ КАРТА**")
+        report.append(f"👤 {chart_data['birth_info']['name']}")
+        report.append(f"📅 {chart_data['birth_info']['date']} в {chart_data['birth_info']['time']}")
+        report.append(f"📍 {chart_data['birth_info']['place']}")
+        report.append("")
+        report.append("✨ **ОСНОВНЫЕ ХАРАКТЕРИСТИКИ**")
+        report.append(f"• Солнце в знаке: {chart_data['sun_sign']}")
+        report.append(f"• Стихия: {chart_data['element']}")
+        report.append(f"• Качество: {chart_data['quality']}")
+        report.append(f"• Асцендент (ASC): {chart_data['ascendant']}")
+        report.append("")
+        report.append("🔮 **ПОЛОЖЕНИЕ ПЛАНЕТ**")
+        for p in chart_data['planets']:
+            retro = " (ретроградный)" if p.get('retrograde') else ""
+            report.append(f"• {p['symbol']} {p['name']} в знаке {p['sign']} ({p['house']} дом){retro}")
+        report.append("")
+        report.append("🏠 **ДОМА**")
+        for h in chart_data['houses']:
+            report.append(f"• {h['number']} дом: {h['sign']}")
+        report.append("")
+        interpretations = {
+            'Овен': 'Вы обладаете лидерскими качествами, энергичны и инициативны.',
+            'Телец': 'Вы практичны, терпеливы и надёжны.',
+            'Близнецы': 'Вы любознательны, общительны и быстро адаптируетесь.',
+            'Рак': 'Вы эмоциональны, заботливы и интуитивны.',
+            'Лев': 'Вы творческая, щедрая и уверенная в себе личность.',
+            'Дева': 'Вы аналитичны, внимательны к деталям и трудолюбивы.',
+            'Весы': 'Вы дипломатичны, обаятельны и стремитесь к гармонии.',
+            'Скорпион': 'Вы страстны, проницательны и обладаете сильной волей.',
+            'Стрелец': 'Вы оптимистичны, свободолюбивы и стремитесь к познанию.',
+            'Козерог': 'Вы дисциплинированы, ответственны и амбициозны.',
+            'Водолей': 'Вы оригинальны, независимы и гуманистичны.',
+            'Рыбы': 'Вы сострадательны, творческие и интуитивные.'
+        }
+        report.append(f"\n**Солнце в {chart_data['sun_sign']}:** {interpretations.get(chart_data['sun_sign'], 'у вас уникальная личность.')}")
+        report.append("\n🔮 *Астрология — это инструмент самопознания. Звёзды указывают путь, но выбор всегда за вами!*")
+        return "\n".join(report)
+
+natal_service = NatalService()
+
+================================================================================
+# ФАЙЛ: services\pdf_generator.py
+================================================================================
+import os
+import uuid
+import logging
+import random
+from datetime import datetime
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.utils import ImageReader
+from reportlab.lib.colors import HexColor, white, black
+
+logger = logging.getLogger(__name__)
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FONT_PATH = os.path.join(BASE_DIR, 'fonts', 'DejaVuSans.ttf')
+FONT_BOLD_PATH = os.path.join(BASE_DIR, 'fonts', 'DejaVuSans-Bold.ttf')
+BACKGROUND_PATH = os.path.join(BASE_DIR, 'static', 'background.jpg')
+
+if os.path.exists(FONT_PATH):
+    pdfmetrics.registerFont(TTFont('DejaVuSans', FONT_PATH))
+    FONT_NAME = 'DejaVuSans'
+    logger.info(f"✅ Шрифт загружен")
+else:
+    FONT_NAME = 'Helvetica'
+
+if os.path.exists(FONT_BOLD_PATH):
+    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', FONT_BOLD_PATH))
+    FONT_BOLD_NAME = 'DejaVuSans-Bold'
+    logger.info(f"✅ Жирный шрифт загружен")
+else:
+    FONT_BOLD_NAME = 'Helvetica-Bold'
+
+TEXT_WHITE = HexColor('#FFFFFF')
+TEXT_GOLD = HexColor('#FFD700')
+TEXT_LIGHT = HexColor('#F0F0F0')
+
+class ProfessionalPDFGenerator:
+    def _draw_background(self, c, width, height):
+        if os.path.exists(BACKGROUND_PATH):
+            try:
+                bg = ImageReader(BACKGROUND_PATH)
+                c.drawImage(bg, 0, 0, width=width, height=height,
+                           preserveAspectRatio=True, mask='auto')
+                c.setFillColor(black)
+                c.setFillAlpha(0.3)
+                c.rect(0, 0, width, height, fill=1)
+                c.setFillAlpha(1.0)
+                return
+            except:
+                pass
+        c.setFillColor(HexColor('#1a2a3a'))
+        c.rect(0, 0, width, height, fill=1)
+
+    def _draw_decorative_frame(self, c, width, height):
+        c.setStrokeColor(TEXT_GOLD)
+        c.setLineWidth(2)
+        c.rect(20, 20, width-40, height-40, stroke=1, fill=0)
+        c.setStrokeColor(TEXT_LIGHT)
+        c.setLineWidth(1)
+        c.rect(25, 25, width-50, height-50, stroke=1, fill=0)
+
+    def _draw_header(self, c, width, height, title, subtitle=None):
+        c.setFont(FONT_BOLD_NAME, 28)
+        c.setFillColor(TEXT_GOLD)
+        c.drawCentredString(width/2, height-60, title)
+        if subtitle:
+            c.setFont(FONT_NAME, 16)
+            c.setFillColor(TEXT_LIGHT)
+            c.drawCentredString(width/2, height-90, subtitle)
+        c.setStrokeColor(TEXT_GOLD)
+        c.setLineWidth(1.5)
+        c.line(width/4, height-100, width*3/4, height-100)
+
+    def create_natal_chart_report_pdf(self, data):
+        filename = f"natal_report_{uuid.uuid4().hex}.pdf"
+        c = canvas.Canvas(filename, pagesize=A4)
+        width, height = A4
+        self._draw_background(c, width, height)
+        self._draw_decorative_frame(c, width, height)
+        self._draw_header(c, width, height, "Натальная карта", data.get('user_name', 'Пользователь'))
+        y = height - 150
+        c.setFont(FONT_BOLD_NAME, 14)
+        c.setFillColor(TEXT_GOLD)
+        c.drawString(50, y, "ДАННЫЕ РОЖДЕНИЯ")
+        y -= 25
+        c.setFont(FONT_NAME, 12)
+        c.setFillColor(TEXT_WHITE)
+        c.drawString(70, y, f"Дата: {data.get('birth_date', 'N/A')}")
+        y -= 20
+        c.drawString(70, y, f"Время: {data.get('birth_time', 'N/A')}")
+        y -= 20
+        c.drawString(70, y, f"Место: {data.get('birth_place', 'N/A')}")
+        y -= 40
+        c.setFont(FONT_BOLD_NAME, 14)
+        c.setFillColor(TEXT_GOLD)
+        c.drawString(50, y, "ОСНОВНЫЕ ХАРАКТЕРИСТИКИ")
+        y -= 25
+        c.setFont(FONT_NAME, 12)
+        c.setFillColor(TEXT_WHITE)
+        c.drawString(70, y, f"Солнце в знаке: {data.get('sun_sign', 'N/A')}")
+        y -= 20
+        c.drawString(70, y, f"Стихия: {data.get('element', 'N/A')}")
+        y -= 20
+        c.drawString(70, y, f"Качество: {data.get('quality', 'N/A')}")
+        y -= 20
+        c.drawString(70, y, f"Асцендент: {data.get('ascendant', 'N/A')}")
+        y -= 40
+        c.setFont(FONT_BOLD_NAME, 14)
+        c.setFillColor(TEXT_GOLD)
+        c.drawString(50, y, "ПОЛОЖЕНИЕ ПЛАНЕТ")
+        y -= 25
+        c.setFont(FONT_NAME, 11)
+        c.setFillColor(TEXT_WHITE)
+        for planet in data.get('planets', []):
+            retro = " (ретроградный)" if planet.get('retrograde') else ""
+            c.drawString(70, y, f"{planet['symbol']} {planet['name']}: {planet['sign']} ({planet['house']} дом){retro}")
+            y -= 18
+        c.save()
+        return filename
+
+pdf_gen = ProfessionalPDFGenerator()
+
+================================================================================
+# ФАЙЛ: services\statistics.py
+================================================================================
+import matplotlib
+matplotlib.use('Agg')  # Используем без GUI
+import matplotlib.pyplot as plt
+import uuid
+import os
+from datetime import datetime, timedelta
+import aiosqlite
+from config import DB_PATH
+import logging
+
+logger = logging.getLogger(__name__)
+
+class StatisticsGenerator:
+    async def generate_users_chart(self):
+        """Генерирует график регистраций за последние 30 дней"""
+        try:
+            plt.figure(figsize=(12, 6))
+            
+            # Получаем данные
+            async with aiosqlite.connect(DB_PATH) as db:
+                dates = []
+                counts = []
+                
+                for i in range(30, -1, -1):
+                    date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+                    next_date = (datetime.now() - timedelta(days=i-1)).strftime('%Y-%m-%d') if i > 0 else datetime.now().strftime('%Y-%m-%d')
+                    
+                    cur = await db.execute(
+                        "SELECT COUNT(*) FROM users WHERE created_at BETWEEN ? AND ?",
+                        (date, next_date)
+                    )
+                    count = (await cur.fetchone())[0]
+                    
+                    dates.append(date[5:])  # ММ-ДД
+                    counts.append(count)
+            
+            # Строим график
+            plt.plot(dates, counts, 'o-', color='#FFD700', linewidth=2, markersize=6)
+            plt.fill_between(dates, counts, alpha=0.3, color='#FFD700')
+            
+            plt.title('Регистрации пользователей', color='white', fontsize=14, pad=20)
+            plt.xlabel('Дата', color='white')
+            plt.ylabel('Новых пользователей', color='white')
+            plt.xticks(rotation=45, ha='right')
+            plt.grid(True, alpha=0.3)
+            plt.style.use('dark_background')
+            
+            filename = f"chart_{uuid.uuid4().hex}.png"
+            plt.tight_layout()
+            plt.savefig(filename, facecolor='#1a2a3a', dpi=100)
+            plt.close()
+            
+            return filename
+            
+        except Exception as e:
+            logger.error(f"Ошибка генерации графика: {e}")
+            return None
+    
+    async def generate_activity_chart(self):
+        """Генерирует график активности за последние 30 дней"""
+        try:
+            plt.figure(figsize=(12, 6))
+            
+            async with aiosqlite.connect(DB_PATH) as db:
+                dates = []
+                counts = []
+                
+                for i in range(30, -1, -1):
+                    date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+                    next_date = (datetime.now() - timedelta(days=i-1)).strftime('%Y-%m-%d') if i > 0 else datetime.now().strftime('%Y-%m-%d')
+                    
+                    cur = await db.execute(
+                        "SELECT COUNT(*) FROM requests WHERE created_at BETWEEN ? AND ?",
+                        (date, next_date)
+                    )
+                    count = (await cur.fetchone())[0]
+                    
+                    dates.append(date[5:])
+                    counts.append(count)
+            
+            plt.bar(dates, counts, color='#FFD700', alpha=0.7)
+            plt.title('Активность пользователей', color='white', fontsize=14, pad=20)
+            plt.xlabel('Дата', color='white')
+            plt.ylabel('Количество запросов', color='white')
+            plt.xticks(rotation=45, ha='right')
+            plt.grid(True, alpha=0.3, axis='y')
+            plt.style.use('dark_background')
+            
+            filename = f"chart_{uuid.uuid4().hex}.png"
+            plt.tight_layout()
+            plt.savefig(filename, facecolor='#1a2a3a', dpi=100)
+            plt.close()
+            
+            return filename
+            
+        except Exception as e:
+            logger.error(f"Ошибка генерации графика активности: {e}")
+            return None
+    
+    async def generate_subscription_chart(self):
+        """Генерирует график подписок"""
+        try:
+            plt.figure(figsize=(10, 6))
+            
+            async with aiosqlite.connect(DB_PATH) as db:
+                cur = await db.execute("SELECT COUNT(*) FROM users WHERE is_paid = 1")
+                paid = (await cur.fetchone())[0]
+                
+                cur = await db.execute("SELECT COUNT(*) FROM users WHERE is_paid = 0")
+                free = (await cur.fetchone())[0]
+            
+            labels = ['Премиум', 'Бесплатные']
+            sizes = [paid, free]
+            colors = ['#FFD700', '#4a5568']
+            explode = (0.05, 0)
+            
+            plt.pie(sizes, explode=explode, labels=labels, colors=colors,
+                    autopct='%1.1f%%', shadow=True, startangle=90)
+            plt.title('Распределение пользователей по подпискам', color='white', fontsize=14, pad=20)
+            plt.style.use('dark_background')
+            
+            filename = f"chart_{uuid.uuid4().hex}.png"
+            plt.tight_layout()
+            plt.savefig(filename, facecolor='#1a2a3a', dpi=100)
+            plt.close()
+            
+            return filename
+            
+        except Exception as e:
+            logger.error(f"Ошибка генерации графика подписок: {e}")
+            return None
+    
+    async def generate_comprehensive_report(self):
+        """Создает полный отчет"""
+        chart_users = await self.generate_users_chart()
+        chart_activity = await self.generate_activity_chart()
+        chart_subs = await self.generate_subscription_chart()
+        
+        return {
+            'users_chart': chart_users,
+            'activity_chart': chart_activity,
+            'subscription_chart': chart_subs
+        }
+
+stats_gen = StatisticsGenerator()
+
+================================================================================
+# ФАЙЛ: services\__init__.py
+================================================================================
+
+
+================================================================================
+# ФАЙЛ: utils\helpers.py
+================================================================================
+def md2_escape(text: str) -> str:
+    """Экранирование для MarkdownV2"""
+    replacements = {
+        '_': '\\_', '*': '\\*', '[': '\\[', ']': '\\]',
+        '(': '\\(', ')': '\\)', '~': '\\~', '`': '\\`',
+        '>': '\\>', '#': '\\#', '+': '\\+', '-': '\\-',
+        '=': '\\=', '|': '\\|', '{': '\\{', '}': '\\}',
+        '.': '\\.', '!': '\\!'
+    }
+    for char, escaped in replacements.items():
+        text = text.replace(char, escaped)
+    return text
+
+def safe_text(text: str) -> str:
+    """Безопасный текст без markdown"""
+    return text.replace('*', '').replace('_', '').replace('`', '')
+
+================================================================================
+# ФАЙЛ: utils\validators.py
+================================================================================
+import re
+from datetime import datetime
+from typing import Tuple, Optional, Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+
+class ValidationError(Exception):
+    """Кастомное исключение для ошибок валидации"""
+    pass
+
+class InputValidator:
+    """Класс для валидации пользовательского ввода"""
+    
+    @staticmethod
+    def validate_name(name: str) -> Tuple[bool, str]:
+        """
+        Проверяет корректность имени
+        Возвращает (успех, сообщение об ошибке или очищенное имя)
+        """
+        if not name or not name.strip():
+            return False, "Имя не может быть пустым"
+        
+        # Удаляем лишние пробелы и спецсимволы
+        cleaned = ' '.join(name.strip().split())
+        
+        # Проверяем длину
+        if len(cleaned) < 2:
+            return False, "Имя должно содержать минимум 2 символа"
+        
+        if len(cleaned) > 50:
+            return False, "Имя слишком длинное (максимум 50 символов)"
+        
+        # Проверяем, что имя содержит только буквы, пробелы, дефисы
+        if not re.match(r'^[а-яА-ЯёЁa-zA-Z\s\-]+$', cleaned):
+            return False, "Имя может содержать только буквы, пробелы и дефисы"
+        
+        return True, cleaned
+    
+    @staticmethod
+    def validate_birth_date(date_str: str) -> Tuple[bool, str]:
+        """
+        Проверяет корректность даты рождения
+        Возвращает (успех, сообщение об ошибке или дату в формате YYYY-MM-DD)
+        """
+        if not date_str or not date_str.strip():
+            return False, "Дата не может быть пустой"
+        
+        # Удаляем пробелы
+        cleaned = date_str.strip()
+        
+        # Поддерживаемые форматы
+        patterns = [
+            (r'^\d{4}-\d{2}-\d{2}$', '%Y-%m-%d'),  # 1990-01-01
+            (r'^\d{2}\.\d{2}\.\d{4}$', '%d.%m.%Y'),  # 01.01.1990
+            (r'^\d{2}/\d{2}/\d{4}$', '%d/%m/%Y'),   # 01/01/1990
+            (r'^\d{2}-\d{2}-\d{4}$', '%d-%m-%Y'),   # 01-01-1990
+        ]
+        
+        for pattern, date_format in patterns:
+            if re.match(pattern, cleaned):
+                try:
+                    date_obj = datetime.strptime(cleaned, date_format)
+                    
+                    # Проверяем, что дата не в будущем
+                    if date_obj > datetime.now():
+                        return False, "Дата рождения не может быть в будущем"
+                    
+                    # Проверяем, что человеку не больше 120 лет
+                    age = (datetime.now() - date_obj).days / 365.25
+                    if age > 120:
+                        return False, "Возраст не может быть больше 120 лет"
+                    
+                    if age < 0:
+                        return False, "Некорректная дата"
+                    
+                    # Возвращаем в стандартном формате
+                    return True, date_obj.strftime('%Y-%m-%d')
+                    
+                except ValueError:
+                    continue
+        
+        return False, "Неверный формат даты. Используйте ГГГГ-ММ-ДД (например, 1990-01-01)"
+    
+    @staticmethod
+    def validate_birth_time(time_str: str) -> Tuple[bool, str]:
+        """
+        Проверяет корректность времени рождения
+        Возвращает (успех, сообщение об ошибке или время в формате HH:MM)
+        """
+        if not time_str or time_str.lower() == '/skip':
+            return True, '12:00'  # Значение по умолчанию
+        
+        cleaned = time_str.strip()
+        
+        # Поддерживаемые форматы
+        patterns = [
+            (r'^\d{1,2}:\d{2}$', '%H:%M'),    # 14:30
+            (r'^\d{1,2}\.\d{2}$', '%H.%M'),   # 14.30
+            (r'^\d{1,2}$', '%H'),              # 14
+        ]
+        
+        for pattern, time_format in patterns:
+            if re.match(pattern, cleaned):
+                try:
+                    if time_format == '%H':
+                        # Только час
+                        hour = int(cleaned)
+                        if 0 <= hour <= 23:
+                            return True, f"{hour:02d}:00"
+                    else:
+                        time_obj = datetime.strptime(cleaned, time_format)
+                        return True, time_obj.strftime('%H:%M')
+                except ValueError:
+                    continue
+        
+        return False, "Неверный формат времени. Используйте ЧЧ:ММ (например, 14:30)"
+    
+    @staticmethod
+    def validate_birth_place(place: str) -> Tuple[bool, str]:
+        """
+        Проверяет корректность места рождения
+        Возвращает (успех, сообщение об ошибке или очищенное место)
+        """
+        if not place or place.lower() == '/skip':
+            return True, 'Не указано'
+        
+        # Удаляем лишние пробелы и спецсимволы
+        cleaned = ' '.join(place.strip().split())
+        
+        # Проверяем длину
+        if len(cleaned) < 2:
+            return False, "Название места должно содержать минимум 2 символа"
+        
+        if len(cleaned) > 100:
+            return False, "Название места слишком длинное (максимум 100 символов)"
+        
+        # Разрешаем буквы, пробелы, дефисы, запятые, точки
+        if not re.match(r'^[а-яА-ЯёЁa-zA-Z0-9\s\-\.,]+$', cleaned):
+            return False, "Название места содержит недопустимые символы"
+        
+        return True, cleaned
+    
+    @staticmethod
+    def validate_question(question: str) -> Tuple[bool, str]:
+        """
+        Проверяет корректность вопроса к AI
+        Возвращает (успех, сообщение об ошибке или очищенный вопрос)
+        """
+        if not question or not question.strip():
+            return False, "Вопрос не может быть пустым"
+        
+        # Удаляем лишние пробелы
+        cleaned = ' '.join(question.strip().split())
+        
+        # Проверяем длину
+        if len(cleaned) < 5:
+            return False, "Вопрос слишком короткий (минимум 5 символов)"
+        
+        if len(cleaned) > 500:
+            return False, "Вопрос слишком длинный (максимум 500 символов)"
+        
+        # Проверяем на явный спам/ерунду
+        spam_patterns = [
+            r'(.)\1{4,}',  # Много повторяющихся символов (ааааа)
+            r'[а-яА-ЯёЁa-zA-Z]\d{4,}',  # Буква и много цифр
+            r'^\d+$',  # Только цифры
+        ]
+        
+        for pattern in spam_patterns:
+            if re.search(pattern, cleaned):
+                return False, "Пожалуйста, задайте осмысленный вопрос"
+        
+        return True, cleaned
+    
+    @staticmethod
+    def validate_compatibility_data(text: str) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Парсит и валидирует данные для совместимости
+        Ожидаемый формат: "Имя, ГГГГ-ММ-ДД, ЧЧ:ММ" или "Имя, ГГГГ-ММ-ДД"
+        """
+        if not text or not text.strip():
+            return False, {"error": "Данные не могут быть пустыми"}
+        
+        # Разделяем по запятым
+        parts = [p.strip() for p in text.split(',')]
+        
+        if len(parts) < 2:
+            return False, {"error": "Укажите имя и дату через запятую"}
+        
+        name = parts[0]
+        # Валидируем имя
+        name_valid, name_result = InputValidator.validate_name(name)
+        if not name_valid:
+            return False, {"error": name_result}
+        
+        # Ищем дату
+        date_str = None
+        time_str = None
+        
+        for part in parts[1:]:
+            # Проверяем, похоже ли на дату
+            if re.search(r'\d{4}-\d{2}-\d{2}|\d{2}[\.\-/]\d{2}[\.\-/]\d{4}', part):
+                date_valid, date_result = InputValidator.validate_birth_date(part)
+                if date_valid:
+                    date_str = date_result
+            # Проверяем, похоже ли на время
+            elif re.search(r'\d{1,2}:\d{2}|\d{1,2}\.\d{2}', part):
+                time_valid, time_result = InputValidator.validate_birth_time(part)
+                if time_valid:
+                    time_str = time_result
+        
+        if not date_str:
+            return False, {"error": "Не удалось найти корректную дату рождения"}
+        
+        return True, {
+            'name': name_result,
+            'date': date_str,
+            'time': time_str or '12:00'
+        }
+
+# Создаем экземпляр для удобства
+validator = InputValidator()
+
+================================================================================
+# ФАЙЛ: utils\__init__.py
+================================================================================
+from .helpers import md2_escape, safe_text
+
+__all__ = ['md2_escape', 'safe_text']
+
+================================================================================
+# ФАЙЛ: utils\Новый текстовый документ.txt
+================================================================================
+# utils/__init__.py
+from .validators import validator, ValidationError
+
+__all__ = ['validator', 'ValidationError']
+
+================================================================================
+# ФАЙЛ: ai_service_n1n.py
+================================================================================
+import httpx
+import logging
+import random
+import asyncio
+import re
+from typing import Optional, Dict, Any
+from config import N1N_API_KEY, N1N_BASE_URL, N1N_MODEL
+from database.db import UserDB
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+class N1NService:
+    def __init__(self):
+        self.api_key = N1N_API_KEY
+        self.base_url = N1N_BASE_URL
+        self.model = N1N_MODEL
+        
+        # Системные промпты для разных типов вопросов
+        self.system_prompts = {
+            'general': """Ты - профессиональный астролог с 20-летним опытом. 
+Отвечай кратко (2-3 предложения), но информативно. 
+Используй дружелюбный тон.
+НЕ используй эмодзи в ответах.
+НЕ упоминай конкретные даты (числа месяца).
+Говори обобщенно: 'сегодня', 'на этой неделе', 'в ближайшее время'.""",
+            
+            'horoscope': """Ты - астролог. Составь краткий гороскоп на сегодня.
+НЕ упоминай конкретные числа и даты.
+Используй общие формулировки: 'сегодня', 'в этот день'.
+Дай совет, связанный со знаком зодиака.
+Ответ должен быть 2-3 предложения.
+НЕ используй эмодзи.""",
+            
+            'compatibility': """Ты - астролог. Проанализируй совместимость двух людей.
+Укажи их знаки зодиака.
+Дай оценку совместимости (отлично/хорошо/средне/сложно).
+Объясни почему.
+Дай совет для отношений.
+Ответ должен быть 3-4 предложения.
+НЕ используй эмодзи."""
+        }
+        
+        logger.info(f"N1N Service инициализирован. Модель: {self.model}")
+    
+    async def process_question(self, user_id: int, question: str) -> Dict[str, Any]:
+        """Обрабатывает вопрос пользователя с контекстом"""
+        try:
+            # Получаем данные пользователя
+            user_data = await UserDB.get_user(user_id)
+            
+            # Определяем тип вопроса
+            question_lower = question.lower()
+            prompt_type = self._detect_question_type(question_lower)
+            
+            # Формируем контекст
+            context = self._build_context(user_data, question_lower)
+            
+            # Выбираем системный промпт
+            system_prompt = self.system_prompts.get(prompt_type, self.system_prompts['general'])
+            
+            # Добавляем инструкцию о датах
+            date_instruction = "ВАЖНО: НЕ используй конкретные числа и даты в ответе! Говори обобщенно."
+            
+            full_prompt = f"{context}\n\nВопрос: {question}\n\n{date_instruction}"
+            
+            # Отправляем запрос к API
+            answer = await self._query_api(system_prompt, full_prompt)
+            
+            # Пост-обработка ответа
+            answer = self._clean_response(answer)
+            
+            return {
+                'type': 'ai_answer',
+                'message': answer,
+                'prompt_type': prompt_type
+            }
+            
+        except Exception as e:
+            logger.error(f"Ошибка в process_question: {e}")
+            return {
+                'type': 'ai_answer',
+                'message': self._get_fallback_response(question),
+                'prompt_type': 'fallback'
+            }
+    
+    def _detect_question_type(self, question: str) -> str:
+        """Определяет тип вопроса"""
+        if any(word in question for word in ['гороскоп', 'сегодня', 'завтра', 'неделя']):
+            return 'horoscope'
+        elif any(word in question for word in ['совместимость', 'отношения', 'любовь', 'пара', 'вместе']):
+            return 'compatibility'
+        elif any(word in question for word in ['карьера', 'работа', 'деньги', 'бизнес']):
+            return 'career'
+        elif any(word in question for word in ['здоровье', 'самочувствие']):
+            return 'health'
+        else:
+            return 'general'
+    
+    def _build_context(self, user_data: Optional[Dict], question: str) -> str:
+        """Строит контекст из данных пользователя"""
+        if not user_data:
+            return ""
+        
+        context_parts = []
+        
+        if user_data.get('birth_date'):
+            from astrology_calculator import AstrologyCalculator
+            try:
+                birth_date = datetime.strptime(user_data['birth_date'], '%Y-%m-%d')
+                sign = AstrologyCalculator.get_zodiac_sign(birth_date)
+                context_parts.append(f"Знак зодиака пользователя: {sign}")
+            except:
+                pass
+        
+        if user_data.get('birth_time'):
+            context_parts.append(f"Время рождения: {user_data['birth_time']}")
+        
+        if user_data.get('birth_place'):
+            context_parts.append(f"Место рождения: {user_data['birth_place']}")
+        
+        if context_parts:
+            return "Данные пользователя:\n" + "\n".join(context_parts)
+        
+        return ""
+    
+    async def _query_api(self, system_prompt: str, user_prompt: str) -> str:
+        """Отправляет запрос к API n1n.ai"""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 300
+            }
+            
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=data
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    return result['choices'][0]['message']['content']
+                else:
+                    logger.error(f"API ошибка {response.status_code}: {response.text}")
+                    return self._get_fallback_response(user_prompt)
+                    
+        except Exception as e:
+            logger.error(f"Ошибка запроса к API: {e}")
+            return self._get_fallback_response(user_prompt)
+    
+    def _clean_response(self, text: str) -> str:
+        """Очищает ответ от нежелательного контента"""
+        if not text:
+            return text
+        
+        # Удаляем эмодзи
+        emoji_pattern = re.compile("["
+            u"\U0001F600-\U0001F64F"  # эмоции
+            u"\U0001F300-\U0001F5FF"  # символы
+            u"\U0001F680-\U0001F6FF"  # транспорт
+            u"\U0001F1E0-\U0001F1FF"  # флаги
+            u"\U00002702-\U000027B0"
+            u"\U000024C2-\U0001F251"
+            "]+", flags=re.UNICODE)
+        text = emoji_pattern.sub(r'', text)
+        
+        # Удаляем упоминания конкретных дат
+        date_patterns = [
+            r'\b\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\b',
+            r'\b\d{1,2}\.\d{1,2}\.\d{2,4}\b',
+            r'\b\d{4}-\d{2}-\d{2}\b',
+            r'сегодня\s+\d{1,2}',
+        ]
+        
+        for pattern in date_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+        
+        # Убираем лишние пробелы
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        return text
+    
+    def _get_fallback_response(self, question: str) -> str:
+        """Возвращает запасной ответ при ошибке"""
+        responses = [
+            "🌟 Звёзды говорят, что сегодня благоприятный день для размышлений.",
+            "🔮 Астрологи советуют довериться своей интуиции.",
+            "✨ Энергия дня располагает к новым начинаниям.",
+            "🌙 Луна в гармоничной фазе - хорошее время для планирования.",
+            "💫 Планеты выстраиваются в удачную конфигурацию для ваших дел."
+        ]
+        return random.choice(responses)
+
+# Создаем экземпляр
+ai_service = N1NService()
+
+================================================================================
+# ФАЙЛ: collect_code.py
+================================================================================
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Скрипт для сбора кода проекта astrobot в один файл.
+Запустите эту программу в корневой папке проекта.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+# Папки и файлы, которые нужно исключить
+EXCLUDE_DIRS = {
+    '__pycache__', 'venv', 'env', '.venv', '.env', 
+    'node_modules', '.git', '.idea', '.vscode',
+    'fonts', 'static', 'database'  # статические и бинарные данные
+}
+
+EXCLUDE_FILES = {
+    '.gitignore', 'восстоновлене баззы данных.txt',
+    '2.3.0', '26.0.1', 'Build', 'Checking', 'Cloning', 'Common',
+    'Docs', 'Downloaded', 'Downloading', 'Exited', 'Installing',
+    'Running', 'Setting', 'Uploaded', 'Uploading', 'Using',
+    '*.pyc', '*.pyo', '*.so', '*.dll', '*.exe', '*.db', '*.sqlite'
+}
+
+# Ключевые файлы, которые нужно собрать в первую очередь (основная логика)
+PRIORITY_FILES = [
+    'webhook_bot.py',
+    'astrology_calculator.py', 
+    'states.py',
+    'config.py',
+    'scheduler.py',
+    'loader.py',
+    'backup_db.py',
+    'ai_service_fixed.py',
+    'requirements.txt',
+    'render.yaml'
+]
+
+# Папки с кодом для рекурсивного сбора
+CODE_DIRS = ['handlers', 'keyboards', 'services', 'utils']
+
+def should_include_file(filepath):
+    """Проверяет, нужно ли включать файл"""
+    name = os.path.basename(filepath)
+    
+    # Исключаем бинарные файлы и служебные
+    if name.startswith('.') or name.endswith('.pyc') or name.endswith('.pyo'):
+        return False
+    if name in EXCLUDE_FILES:
+        return False
+    
+    # Включаем только .py и .txt, .yaml файлы
+    return name.endswith(('.py', '.txt', '.yaml', '.yml'))
+
+def collect_file_content(filepath, root_dir):
+    """Читает содержимое файла"""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Относительный путь для вывода
+        rel_path = os.path.relpath(filepath, root_dir)
+        return f"\n{'='*80}\n# ФАЙЛ: {rel_path}\n{'='*80}\n{content}\n"
+    except Exception as e:
+        return f"\n# ОШИБКА при чтении {filepath}: {e}\n"
+
+def main():
+    # Определяем корневую папку (там, откуда запущен скрипт)
+    root_dir = os.getcwd()
+    print(f"🔍 Сканирую проект в: {root_dir}")
+    
+    output_content = []
+    output_content.append("#" * 80)
+    output_content.append("# АРХИВ КОДА ПРОЕКТА ASTROBOT")
+    output_content.append("#" * 80)
+    output_content.append(f"# Корневая папка: {root_dir}")
+    output_content.append("#" * 80)
+    
+    # 1. Собираем приоритетные файлы из корня
+    print("\n📁 Собираю основные файлы...")
+    for filename in PRIORITY_FILES:
+        filepath = os.path.join(root_dir, filename)
+        if os.path.isfile(filepath):
+            output_content.append(collect_file_content(filepath, root_dir))
+            print(f"   ✅ {filename}")
+        else:
+            print(f"   ⚠️ {filename} (не найден)")
+    
+    # 2. Собираем файлы из папок с кодом
+    for code_dir in CODE_DIRS:
+        dirpath = os.path.join(root_dir, code_dir)
+        if not os.path.isdir(dirpath):
+            print(f"   ⚠️ Папка {code_dir} не найдена")
+            continue
+        
+        print(f"\n📁 Сканирую папку {code_dir}/...")
+        for root, dirs, files in os.walk(dirpath):
+            # Исключаем ненужные папки
+            dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+            
+            for file in files:
+                filepath = os.path.join(root, file)
+                if should_include_file(filepath):
+                    output_content.append(collect_file_content(filepath, root_dir))
+                    print(f"   ✅ {os.path.relpath(filepath, root_dir)}")
+    
+    # 3. Дополнительно собираем все .py файлы из корня (кроме уже собранных)
+    print("\n📁 Собираю остальные .py файлы из корня...")
+    for file in os.listdir(root_dir):
+        filepath = os.path.join(root_dir, file)
+        if os.path.isfile(filepath) and file.endswith('.py'):
+            if file not in PRIORITY_FILES:
+                output_content.append(collect_file_content(filepath, root_dir))
+                print(f"   ✅ {file}")
+    
+    # Записываем результат
+    output_file = os.path.join(root_dir, 'PROJECT_CODE.txt')
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(''.join(output_content))
+    
+    # Статистика
+    total_size = os.path.getsize(output_file)
+    print("\n" + "="*80)
+    print(f"✅ ГОТОВО! Файл создан: {output_file}")
+    print(f"📊 Размер файла: {total_size:,} байт ({total_size/1024:.1f} КБ)")
+    print(f"📄 Скопируйте содержимое этого файла и вставьте в чат с ассистентом.")
+    print("="*80)
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+# ФАЙЛ: force_reset.py
+================================================================================
+import asyncio
+import os
+from dotenv import load_dotenv
+from aiogram import Bot
+
+# Загружаем переменные из .env
+load_dotenv()
+
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+
+if not BOT_TOKEN:
+    print("❌ BOT_TOKEN не найден в .env файле!")
+    print("Создайте файл .env с содержимым: BOT_TOKEN=ваш_токен")
+    exit(1)
+
+async def force_reset():
+    print("🔄 Подключаюсь к Telegram...")
+    bot = Bot(token=BOT_TOKEN)
+    
+    # Получаем информацию о веб-хуке
+    webhook_info = await bot.get_webhook_info()
+    print(f"📡 Текущий веб-хук: {webhook_info.url}")
+    
+    # Удаляем веб-хук и сбрасываем обновления
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("✅ Веб-хук удалён, обновления сброшены")
+    
+    # Ждём 5 секунд, чтобы Telegram обработал запрос
+    await asyncio.sleep(5)
+    
+    # Проверяем, что веб-хук действительно удалён
+    webhook_info = await bot.get_webhook_info()
+    if webhook_info.url:
+        print(f"⚠️ Веб-хук всё ещё активен: {webhook_info.url}")
+    else:
+        print("✅ Веб-хук успешно удалён")
+    
+    # Закрываем сессию
+    await bot.session.close()
+    print("✅ Готово! Теперь можно перезапускать бота.")
+
+if __name__ == "__main__":
+    asyncio.run(force_reset())
+
+================================================================================
+# ФАЙЛ: reset.py
+================================================================================
+import asyncio
+import os
+from dotenv import load_dotenv
+from aiogram import Bot
+
+# Загружаем переменные из .env
+load_dotenv()
+
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+
+if not BOT_TOKEN:
+    print("❌ BOT_TOKEN не найден в .env файле!")
+    exit(1)
+
+async def reset():
+    bot = Bot(token=BOT_TOKEN)
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("✅ Webhook удалён")
+    await bot.session.close()
+
+asyncio.run(reset())
