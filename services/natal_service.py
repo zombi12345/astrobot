@@ -36,7 +36,8 @@ class NatalService:
     }
     
     # Ваш API-ключ VedAstro
-    VEDASTRO_API_KEY = "sk_live_0YZ5mUocBiDoQ7vXVmgZM5mlBtEnO8Dwov11Ytvc"
+    import os
+    VEDASTRO_API_KEY = os.environ.get('VEDASTRO_API_KEY', '')
     VEDASTRO_BASE_URL = "https://vedastro.org/api/Calculate"
     
     def __init__(self):
