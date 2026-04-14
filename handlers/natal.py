@@ -49,7 +49,7 @@ async def natal_finish(message: Message, state: FSMContext):
     processing_msg = await message.answer("🔮 **Создаю натальную карту...**", parse_mode="Markdown")
     try:
         # create_natal_chart - синхронная функция, вызываем без await
-        chart_data = natal_service.create_natal_chart(
+        chart_data = await natal_service.create_natal_chart(
             data['name'], 
             data['birth_date'], 
             data['birth_time'], 
@@ -85,7 +85,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
         return
     processing_msg = await callback.message.edit_text("📄 **Создаю PDF...**", parse_mode="Markdown")
     try:
-        chart_data = natal_service.create_natal_chart(
+        chart_data = await natal_service.create_natal_chart(
             user_data.get('first_name', 'Пользователь'),
             user_data['birth_date'],
             user_data.get('birth_time', '12:00'),
