@@ -15,7 +15,7 @@ router = Router()
 
 @router.callback_query(F.data == "natal_chart")
 async def natal_chart_menu(callback: CallbackQuery):
-    text = md2_escape("🔮 **Создание натальной карты**\n\nНатальная карта — это астрологическая карта рождения.")
+    text = md2_escape("🔮 **Создание натальной карты**\n\nНатальная карта — это астрологическая карта рождения, которая показывает положение планет в момент вашего рождения.")
     await callback.message.edit_text(text, reply_markup=natal_options_keyboard(), parse_mode="MarkdownV2")
 
 @router.callback_query(F.data == "natal_input")
@@ -46,32 +46,38 @@ async def natal_finish(message: Message, state: FSMContext):
     await state.update_data(birth_place=message.text)
     data = await state.get_data()
     await state.clear()
-    processing_msg = await message.answer("🔮 **Создаю натальную карту...**", parse_mode="Markdown")
+    
+    processing_msg = await message.answer("🔮 **Создаю натальную карту...**\nЭто может занять до 30 секунд", parse_mode="Markdown")
+    
     try:
-        # create_natal_chart - синхронная функция, вызываем без await
         chart_data = await natal_service.create_natal_chart(
-            data['name'], 
-            data['birth_date'], 
-            data['birth_time'], 
-            data['birth_place']
+            data['name'], data['birth_date'], data['birth_time'], data['birth_place']
         )
         await UserDB.update_birth_data(message.from_user.id, data['birth_date'], data['birth_time'], data['birth_place'])
         await processing_msg.delete()
         
+        # Отправляем SVG-изображение
         svg_path = natal_service.generate_svg_chart(chart_data)
         if svg_path and os.path.exists(svg_path):
             svg_file = FSInputFile(svg_path)
             await message.answer_document(svg_file, caption="🔮 **Схема натальной карты**")
             os.remove(svg_path)
         
+        # Отправляем текстовый отчёт
         report_text = natal_service.generate_report_text(chart_data)
-        await message.answer(report_text, parse_mode="Markdown")
+        if len(report_text) > 4000:
+            for i in range(0, len(report_text), 4000):
+                await message.answer(report_text[i:i+4000], parse_mode="Markdown")
+        else:
+            await message.answer(report_text, parse_mode="Markdown")
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📄 Скачать PDF-отчёт", callback_data="pdf_natal_from_chart")],
+            [InlineKeyboardButton(text="✨ Дополнительные прогнозы", callback_data="extra_forecasts")],
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
         ])
         await message.answer("✨ **Натальная карта готова!**", reply_markup=keyboard, parse_mode="Markdown")
+        
     except Exception as e:
         logger.error(f"Ошибка: {e}")
         await processing_msg.edit_text(f"❌ **Ошибка:** {str(e)}", parse_mode="Markdown")
@@ -83,6 +89,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
     if not user_data or not user_data.get('birth_date'):
         await callback.message.edit_text("❌ Нужны данные о рождении.", reply_markup=back_to_menu_keyboard())
         return
+    
     processing_msg = await callback.message.edit_text("📄 **Создаю PDF...**", parse_mode="Markdown")
     try:
         chart_data = await natal_service.create_natal_chart(
@@ -91,20 +98,9 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
             user_data.get('birth_time', '12:00'),
             user_data.get('birth_place', 'Не указано')
         )
-        pdf_data = {
-            'user_name': user_data.get('first_name', 'Пользователь'),
-            'birth_date': user_data['birth_date'],
-            'birth_time': user_data.get('birth_time', '12:00'),
-            'birth_place': user_data.get('birth_place', 'Не указано'),
-            'sun_sign': chart_data['sun_sign'],
-            'element': chart_data['element'],
-            'quality': chart_data['quality'],
-            'ascendant': chart_data['ascendant'],
-            'planets': chart_data['planets'],
-            'houses': chart_data['houses']
-        }
-        pdf_path = pdf_gen.create_natal_chart_report_pdf(pdf_data)
+        pdf_path = pdf_gen.create_natal_chart_pdf(chart_data)
         await processing_msg.delete()
+        
         pdf_file = FSInputFile(pdf_path)
         await callback.message.answer_document(pdf_file, caption=f"🔮 Натальная карта {user_data.get('first_name', 'Пользователь')}")
         await callback.message.answer("📌 **Выберите действие:**", reply_markup=main_menu_keyboard(user_id))
