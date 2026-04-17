@@ -1,13 +1,12 @@
 import os
 import uuid
 import logging
-import math
 from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.colors import HexColor, white, black
+from reportlab.lib.colors import HexColor
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ ACCENT_PURPLE = HexColor('#8B5CF6')
 
 class ProfessionalPDFGenerator:
     def create_natal_chart_pdf(self, chart_data: dict) -> str:
-        """Создаёт красивый PDF-отчёт натальной карты"""
+        """Создаёт PDF-отчёт на основе уже рассчитанных данных натальной карты"""
         filename = f"natal_report_{uuid.uuid4().hex}.pdf"
         c = canvas.Canvas(filename, pagesize=A4)
         width, height = A4
@@ -100,7 +99,6 @@ class ProfessionalPDFGenerator:
         c.setFont(FONT_NAME, 11)
         c.setFillColor(TEXT_WHITE)
         
-        # Две колонки для планет
         left_x = 70
         right_x = 350
         planets = chart_data['planets']
@@ -119,6 +117,19 @@ class ProfessionalPDFGenerator:
         
         y = height - 160 - 25 - 18 * half - 40
         
+        # Аспекты
+        if chart_data.get('aspects'):
+            c.setFont(FONT_BOLD_NAME, 14)
+            c.setFillColor(TEXT_GOLD)
+            c.drawString(50, y, "АСПЕКТЫ ПЛАНЕТ")
+            y -= 25
+            c.setFont(FONT_NAME, 10)
+            c.setFillColor(TEXT_WHITE)
+            for asp in chart_data['aspects'][:10]:
+                c.drawString(70, y, f"{asp['planet1']} {asp['aspect']} {asp['planet2']} — {asp['name']} ({asp['angle']}°, орбис {asp['orbis']}°)")
+                y -= 15
+            y -= 15
+        
         # Дома
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
@@ -127,8 +138,6 @@ class ProfessionalPDFGenerator:
         
         c.setFont(FONT_NAME, 10)
         c.setFillColor(TEXT_WHITE)
-        
-        # Дома в 4 колонки
         houses = chart_data['houses']
         col_width = 100
         for i, house in enumerate(houses):
@@ -155,16 +164,14 @@ class ProfessionalPDFGenerator:
             'Водолей': 'Вы оригинальны, независимы и гуманистичны.',
             'Рыбы': 'Вы сострадательны, творческие и интуитивные.'
         }
-        
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "ИНТЕРПРЕТАЦИЯ")
         y -= 25
-        
         c.setFont(FONT_NAME, 11)
         c.setFillColor(TEXT_WHITE)
-        interpretation = interpretations.get(chart_data['sun_sign'], 'у вас уникальная личность.')
-        c.drawString(70, y, f"☉ Солнце в {chart_data['sun_sign']}: {interpretation}")
+        interp = interpretations.get(chart_data['sun_sign'], 'у вас уникальная личность.')
+        c.drawString(70, y, f"☉ Солнце в {chart_data['sun_sign']}: {interp}")
         
         # Нижний колонтитул
         c.setFont(FONT_NAME, 9)
