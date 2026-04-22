@@ -3,6 +3,7 @@ import uuid
 import os
 import httpx
 import math
+import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional, List
 
@@ -93,19 +94,31 @@ class NatalService:
                 response = await client.get(url, headers=headers)
                 if response.status_code == 200:
                     data = response.json()
-                    # Логируем первые 200 символов для отладки
-                    logger.debug(f"Ответ {planet_name}: {str(data)[:200]}")
                     
-                    # Извлекаем долготу (пробуем разные возможные ключи)
+                    # ========== ДИАГНОСТИКА ==========
+                    print(f"\n🔍 ОТВЕТ ДЛЯ {planet_name}:")
+                    print(json.dumps(data, indent=2, ensure_ascii=False))
+                    # =================================
+                    
+                    # Пробуем извлечь долготу (координату планеты)
                     longitude = None
-                    for key in ['Longitude', 'EclipticLongitude', 'Position', 'Degrees']:
+                    # Возможные названия поля в ответе VedAstro
+                    for key in ['Longitude', 'EclipticLongitude', 'Position', 'Degrees', 'longitude', 'lon']:
                         if key in data:
                             longitude = data[key]
                             break
+                    # Если нет прямого поля, ищем во вложенных объектах
                     if longitude is None:
-                        logger.warning(f"Не найдена долгота для {planet_name}, ответ: {data}")
+                        if 'Position' in data and isinstance(data['Position'], dict):
+                            longitude = data['Position'].get('Longitude')
+                        elif 'Ecliptic' in data and isinstance(data['Ecliptic'], dict):
+                            longitude = data['Ecliptic'].get('Longitude')
+                    
+                    if longitude is None:
+                        print(f"⚠️ Не найдена долгота для {planet_name}, ответ: {data}")
                         longitude = 0.0
                     
+                    # Преобразуем в градусы и минуты
                     if isinstance(longitude, (int, float)):
                         degree = int(longitude)
                         minute_deg = int((longitude % 1) * 60)
@@ -113,19 +126,24 @@ class NatalService:
                         degree = 0
                         minute_deg = 0
                     
+                    # Знак и дом
+                    sign = data.get('Sign', {}).get('Name', 'Неизвестно')
+                    house = data.get('House', '?')
+                    retrograde = data.get('Retrograde', False)
+                    
                     return {
-                        'sign': data.get('Sign', {}).get('Name', 'Неизвестно'),
-                        'house': data.get('House', '?'),
-                        'retrograde': data.get('Retrograde', False),
+                        'sign': sign,
+                        'house': str(house),
+                        'retrograde': retrograde,
                         'degree': degree,
                         'minute': minute_deg,
                         'longitude': longitude,
                     }
                 else:
-                    logger.error(f"Ошибка {response.status_code} для {planet_name}")
+                    print(f"❌ Ошибка {response.status_code} для {planet_name}")
                     return None
         except Exception as e:
-            logger.error(f"Исключение для {planet_name}: {e}")
+            print(f"❌ Исключение для {planet_name}: {e}")
             return None
     
     async def create_natal_chart(self, name: str, birth_date: str, birth_time: str, birth_place: str) -> Dict[str, Any]:
@@ -160,14 +178,14 @@ class NatalService:
                     'name': rus_name,
                     'symbol': symbol,
                     'sign': data['sign'],
-                    'house': str(data['house']),
+                    'house': data['house'],
                     'retrograde': data['retrograde'],
                     'degree': data['degree'],
                     'minute': data['minute'],
                     'longitude': data['longitude']
                 })
             else:
-                # fallback: демо-данные (но с разными знаками)
+                # fallback
                 demo_sign = self._get_demo_sign(eng_name, year, month, day)
                 planets_data.append({
                     'name': rus_name,
@@ -250,9 +268,7 @@ class NatalService:
         return signs[seed % 12]
     
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        # ... (оставьте ваш существующий красивый SVG-код, он не менялся)
-        # Для краткости я не повторяю его здесь, но вы можете скопировать из предыдущего ответа
-        # Если его нет, используйте простую заглушку:
+        # Упрощённая версия, можно оставить как есть
         try:
             filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data['birth_info']
