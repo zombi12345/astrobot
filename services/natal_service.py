@@ -1,15 +1,17 @@
 import logging
 import uuid
 import os
-import httpx
 import math
-import json
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional, List
+
+# Импорт библиотеки VedAstro
+from vedastro import *
 
 logger = logging.getLogger(__name__)
 
 class NatalService:
+    # База координат городов (широта, долгота, часовой пояс)
     CITY_COORDS = {
         'минск': (53.9045, 27.5615, '+03:00'),
         'москва': (55.7558, 37.6173, '+03:00'),
@@ -37,10 +39,12 @@ class NatalService:
     }
     
     VEDASTRO_API_KEY = os.environ.get('VEDASTRO_API_KEY', '')
-    VEDASTRO_BASE_URL = "https://vedastro.org/api/Calculate"
     
     def __init__(self):
-        logger.info("✅ VedAstro сервис инициализирован")
+        # Инициализация VedAstro с вашим API-ключом
+        Calculate.SetAPIKey(self.VEDASTRO_API_KEY)
+        Calculate.SetAyanamsa(Ayanamsa.Lahiri)
+        logger.info("✅ VedAstro сервис инициализирован (библиотека vedastro)")
     
     def get_coordinates(self, place: str) -> Tuple[float, float, str]:
         place_lower = place.lower().strip()
@@ -84,71 +88,11 @@ class NatalService:
             return False, "", "Название места слишком короткое"
         return True, cleaned, ""
     
-    async def _fetch_planet_data(self, planet_name: str, lat: float, lon: float, 
-                                   year: int, month: int, day: int, 
-                                   hour: int, minute: int, tz: str) -> Optional[Dict]:
-        try:
-            url = f"{self.VEDASTRO_BASE_URL}/PlanetName/{planet_name}/Location/UserCity/Time/{hour:02d}:{minute:02d}/{day:02d}/{month:02d}/{year}/{tz}"
-            headers = {"X-API-Key": self.VEDASTRO_API_KEY}
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.get(url, headers=headers)
-                if response.status_code == 200:
-                    data = response.json()
-                    
-                    # ========== ДИАГНОСТИКА ==========
-                    print(f"\n🔍 ОТВЕТ ДЛЯ {planet_name}:")
-                    print(json.dumps(data, indent=2, ensure_ascii=False))
-                    # =================================
-                    
-                    # Пробуем извлечь долготу (координату планеты)
-                    longitude = None
-                    # Возможные названия поля в ответе VedAstro
-                    for key in ['Longitude', 'EclipticLongitude', 'Position', 'Degrees', 'longitude', 'lon']:
-                        if key in data:
-                            longitude = data[key]
-                            break
-                    # Если нет прямого поля, ищем во вложенных объектах
-                    if longitude is None:
-                        if 'Position' in data and isinstance(data['Position'], dict):
-                            longitude = data['Position'].get('Longitude')
-                        elif 'Ecliptic' in data and isinstance(data['Ecliptic'], dict):
-                            longitude = data['Ecliptic'].get('Longitude')
-                    
-                    if longitude is None:
-                        print(f"⚠️ Не найдена долгота для {planet_name}, ответ: {data}")
-                        longitude = 0.0
-                    
-                    # Преобразуем в градусы и минуты
-                    if isinstance(longitude, (int, float)):
-                        degree = int(longitude)
-                        minute_deg = int((longitude % 1) * 60)
-                    else:
-                        degree = 0
-                        minute_deg = 0
-                    
-                    # Знак и дом
-                    sign = data.get('Sign', {}).get('Name', 'Неизвестно')
-                    house = data.get('House', '?')
-                    retrograde = data.get('Retrograde', False)
-                    
-                    return {
-                        'sign': sign,
-                        'house': str(house),
-                        'retrograde': retrograde,
-                        'degree': degree,
-                        'minute': minute_deg,
-                        'longitude': longitude,
-                    }
-                else:
-                    print(f"❌ Ошибка {response.status_code} для {planet_name}")
-                    return None
-        except Exception as e:
-            print(f"❌ Исключение для {planet_name}: {e}")
-            return None
-    
-    async def create_natal_chart(self, name: str, birth_date: str, birth_time: str, birth_place: str) -> Dict[str, Any]:
+    def create_natal_chart(self, name: str, birth_date: str, birth_time: str, birth_place: str) -> Dict[str, Any]:
+        """Создаёт натальную карту через библиотеку vedastro (синхронно)"""
         logger.info(f"🔮 Создание натальной карты для {name}")
         
+        # Валидация
         valid_date, date_parts, date_err = self.validate_date(birth_date)
         if not valid_date:
             raise ValueError(date_err)
@@ -163,39 +107,62 @@ class NatalService:
         hour, minute = time_parts if time_parts else (12, 0)
         lat, lon, tz = self.get_coordinates(place_clean)
         
-        planets_to_fetch = [
-            ("Sun", "Солнце", "☉"), ("Moon", "Луна", "☽"), ("Mercury", "Меркурий", "☿"),
-            ("Venus", "Венера", "♀"), ("Mars", "Марс", "♂"), ("Jupiter", "Юпитер", "♃"),
-            ("Saturn", "Сатурн", "♄"), ("Uranus", "Уран", "⛢"), ("Neptune", "Нептун", "♆"),
-            ("Pluto", "Плутон", "♇")
+        # Создаём объект времени VedAstro
+        try:
+            geo = GeoLocation(place_clean, lon, lat)
+            time_obj = Time(hour=hour, minute=minute, day=day, month=month, year=year, offset=tz, geolocation=geo)
+        except Exception as e:
+            logger.error(f"Ошибка создания Time: {e}")
+            raise ValueError(f"Не удалось создать временную метку: {e}")
+        
+        # Список планет (английские названия для VedAstro)
+        planets_eng = [
+            "Sun", "Moon", "Mercury", "Venus", "Mars", 
+            "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"
         ]
+        planets_ru = [
+            "Солнце", "Луна", "Меркурий", "Венера", "Марс", 
+            "Юпитер", "Сатурн", "Уран", "Нептун", "Плутон"
+        ]
+        planets_symbols = ["☉", "☽", "☿", "♀", "♂", "♃", "♄", "⛢", "♆", "♇"]
         
         planets_data = []
-        for eng_name, rus_name, symbol in planets_to_fetch:
-            data = await self._fetch_planet_data(eng_name, lat, lon, year, month, day, hour, minute, tz)
-            if data:
+        for eng, rus, sym in zip(planets_eng, planets_ru, planets_symbols):
+            try:
+                # Получаем данные планеты
+                planet_data = Calculate.AllPlanetData(getattr(PlanetName, eng), time_obj)
+                sign = planet_data.Sign.Name if hasattr(planet_data, 'Sign') else "Неизвестно"
+                house = planet_data.HousePlanetIsIn if hasattr(planet_data, 'HousePlanetIsIn') else "?"
+                retrograde = planet_data.Retrograde if hasattr(planet_data, 'Retrograde') else False
+                # Долгота (должна быть в planet_data.Longitude)
+                longitude = float(planet_data.Longitude) if hasattr(planet_data, 'Longitude') else 0.0
+                degree = int(longitude)
+                minute_deg = int((longitude % 1) * 60)
+                
+                logger.info(f"{rus}: знак {sign}, дом {house}, долгота {longitude}°")
+                
                 planets_data.append({
-                    'name': rus_name,
-                    'symbol': symbol,
-                    'sign': data['sign'],
-                    'house': data['house'],
-                    'retrograde': data['retrograde'],
-                    'degree': data['degree'],
-                    'minute': data['minute'],
-                    'longitude': data['longitude']
+                    'name': rus,
+                    'symbol': sym,
+                    'sign': sign,
+                    'house': str(house),
+                    'retrograde': retrograde,
+                    'degree': degree,
+                    'minute': minute_deg,
+                    'longitude': longitude,
                 })
-            else:
+            except Exception as e:
+                logger.error(f"Ошибка получения данных для {eng}: {e}")
                 # fallback
-                demo_sign = self._get_demo_sign(eng_name, year, month, day)
                 planets_data.append({
-                    'name': rus_name,
-                    'symbol': symbol,
-                    'sign': demo_sign,
-                    'house': str((hash(f"{eng_name}{birth_date}") % 12) + 1),
+                    'name': rus,
+                    'symbol': sym,
+                    'sign': "Неизвестно",
+                    'house': "?",
                     'retrograde': False,
                     'degree': 0,
                     'minute': 0,
-                    'longitude': 0.0
+                    'longitude': 0.0,
                 })
         
         sun_sign = planets_data[0]['sign']
@@ -261,23 +228,18 @@ class NatalService:
                         break
         return aspects
     
-    def _get_demo_sign(self, planet: str, year: int, month: int, day: int) -> str:
-        signs = ['Овен', 'Телец', 'Близнецы', 'Рак', 'Лев', 'Дева', 'Весы', 'Скорпион', 'Стрелец', 'Козерог', 'Водолей', 'Рыбы']
-        import hashlib
-        seed = int(hashlib.md5(f"{planet}{year}{month}{day}".encode()).hexdigest()[:8], 16)
-        return signs[seed % 12]
-    
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        # Упрощённая версия, можно оставить как есть
+        # Оставляем ваш существующий код SVG (можно использовать упрощённый вариант)
         try:
             filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data['birth_info']
             svg = f'''<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
 <rect width="800" height="800" fill="#1a2a3a"/>
 <circle cx="400" cy="400" r="350" fill="none" stroke="#c9a959" stroke-width="3"/>
-<text x="400" y="65" text-anchor="middle" fill="#c9a959" font-size="22">Натальная карта</text>
+<text x="400" y="65" text-anchor="middle" fill="#c9a959" font-size="22">✨ Натальная карта ✨</text>
 <text x="400" y="100" text-anchor="middle" fill="#c9a959" font-size="16">{info['name']}</text>
-<text x="400" y="750" text-anchor="middle" fill="#c9a959" font-size="12">{info['date']} {info['time']} {info['place']}</text>
+<text x="400" y="125" text-anchor="middle" fill="#c9a959" font-size="12">{info['date']} {info['time']} {info['place']}</text>
+<text x="400" y="750" text-anchor="middle" fill="#c9a959" font-size="12">Асцендент: {chart_data['ascendant']}</text>
 </svg>'''
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(svg)

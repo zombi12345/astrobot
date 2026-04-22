@@ -114,7 +114,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
             await callback.message.edit_text("❌ Нужны данные о рождении. Сначала создайте натальную карту.", reply_markup=back_to_menu_keyboard())
             return
         try:
-            chart_data = await natal_service.create_natal_chart(
+            chart_data = natal_service.create_natal_chart(
                 user_data.get('first_name', 'Пользователь'),
                 user_data['birth_date'],
                 user_data.get('birth_time', '12:00'),
