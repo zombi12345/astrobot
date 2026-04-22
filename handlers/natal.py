@@ -73,7 +73,7 @@ async def natal_finish(message: Message, state: FSMContext):
     processing_msg = await message.answer("🔮 **Создаю натальную карту...**\nЭто может занять до 30 секунд", parse_mode="Markdown")
     
     try:
-        chart_data = await natal_service.create_natal_chart(
+        chart_data = natal_service.create_natal_chart(
             data['name'], data['birth_date'], data['birth_time'], data['birth_place']
         )
         user_id = message.from_user.id
