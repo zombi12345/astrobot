@@ -28,9 +28,9 @@ class AdditionalFeatures:
             return {"error": str(e)}
     
     async def get_transits(self, birth_date: str, birth_time: str, birth_place: str, target_date: str) -> Dict[str, Any]:
-        """Транзиты планет на указанную дату"""
+        """Транзиты планет на указанную дату (использует уже созданную натальную карту)"""
         try:
-            # Получаем натальную карту
+            # Создаём натальную карту
             chart = await natal_service.create_natal_chart("User", birth_date, birth_time, birth_place)
             year, month, day = map(int, target_date.split('-'))
             hour, minute = 12, 0
@@ -46,11 +46,17 @@ class AdditionalFeatures:
                     response = await client.get(url, headers=headers)
                     if response.status_code == 200:
                         data = response.json()
+                        transit_sign = data.get('Sign', {}).get('Name', '?')
+                        # Вычисляем аспект между натальной и транзитной позицией
+                        aspect = self._get_aspect_description(planet['sign'], transit_sign)
                         transits.append({
-                            'planet': planet['name'], 'symbol': planet['symbol'],
-                            'natal_sign': planet['sign'], 'transit_sign': data.get('Sign', {}).get('Name', '?'),
-                            'aspect': self._get_aspect_description(planet['sign'], data.get('Sign', {}).get('Name', ''))
+                            'planet': planet['name'],
+                            'symbol': planet['symbol'],
+                            'natal_sign': planet['sign'],
+                            'transit_sign': transit_sign,
+                            'aspect': aspect
                         })
+                    await asyncio.sleep(0.2)
             return {'transits': transits, 'date': target_date}
         except Exception as e:
             logger.error(f"Ошибка транзитов: {e}")
@@ -59,10 +65,8 @@ class AdditionalFeatures:
     async def get_auspicious_dates(self, birth_date: str, purpose: str = "general") -> List[str]:
         """Благоприятные даты для важных дел"""
         try:
-            year, month, day = map(int, birth_date.split('-'))
             today = datetime.now()
             dates = []
-            
             for i in range(1, 31):
                 check_date = today + timedelta(days=i)
                 url = f"{self.base_url}/AuspiciousDay/{check_date.year}/{check_date.month}/{check_date.day}"
@@ -73,14 +77,14 @@ class AdditionalFeatures:
                         data = response.json()
                         if data.get('is_auspicious', False):
                             dates.append(check_date.strftime('%Y-%m-%d'))
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.2)
             return dates[:10]
         except Exception as e:
             logger.error(f"Ошибка благоприятных дат: {e}")
             return []
     
     async def get_extended_compatibility(self, person1: Dict, person2: Dict) -> Dict[str, Any]:
-        """Расширенная совместимость (синастрия)"""
+        """Расширенная совместимость (синастрия) с использованием реальных долгот"""
         try:
             chart1 = await natal_service.create_natal_chart("Person1", person1['date'], person1['time'], person1['place'])
             chart2 = await natal_service.create_natal_chart("Person2", person2['date'], person2['time'], person2['place'])
@@ -88,10 +92,18 @@ class AdditionalFeatures:
             synastry = []
             for p1 in chart1['planets'][:7]:
                 for p2 in chart2['planets'][:7]:
-                    if abs(p1.get('degree', 0) - p2.get('degree', 0)) < 10:
+                    # Проверяем аспекты по долготе
+                    diff = abs(p1.get('longitude', 0) - p2.get('longitude', 0))
+                    diff = min(diff, 360 - diff)
+                    if diff < 10:
                         synastry.append({
-                            'planet1': f"{p1['symbol']}{p1['name']}", 'planet2': f"{p2['symbol']}{p2['name']}",
-                            'sign1': p1['sign'], 'sign2': p2['sign'], 'house1': p1['house'], 'house2': p2['house']
+                            'planet1': f"{p1['symbol']}{p1['name']}",
+                            'planet2': f"{p2['symbol']}{p2['name']}",
+                            'sign1': p1['sign'],
+                            'sign2': p2['sign'],
+                            'house1': p1['house'],
+                            'house2': p2['house'],
+                            'orbis': round(diff, 1)
                         })
             
             total_score = 50 + len(synastry) * 5
@@ -103,9 +115,12 @@ class AdditionalFeatures:
             return {
                 'total_score': min(100, total_score),
                 'synastry_aspects': synastry,
-                'sign1': chart1['sun_sign'], 'sign2': chart2['sun_sign'],
-                'element1': chart1['element'], 'element2': chart2['element'],
-                'quality1': chart1['quality'], 'quality2': chart2['quality'],
+                'sign1': chart1['sun_sign'],
+                'sign2': chart2['sun_sign'],
+                'element1': chart1['element'],
+                'element2': chart2['element'],
+                'quality1': chart1['quality'],
+                'quality2': chart2['quality'],
                 'recommendation': self._get_recommendation(total_score)
             }
         except Exception as e:
@@ -113,7 +128,10 @@ class AdditionalFeatures:
             return {"error": str(e)}
     
     def _get_aspect_description(self, sign1: str, sign2: str) -> str:
-        aspects = {('Овен','Лев'):'трин',('Телец','Дева'):'секстиль',('Близнецы','Стрелец'):'оппозиция'}
+        aspects = {
+            ('Овен','Лев'): 'трин', ('Телец','Дева'): 'секстиль',
+            ('Близнецы','Стрелец'): 'оппозиция', ('Рак','Козерог'): 'оппозиция'
+        }
         return aspects.get((sign1, sign2), aspects.get((sign2, sign1), 'нейтральный'))
     
     def _get_recommendation(self, score: int) -> str:
