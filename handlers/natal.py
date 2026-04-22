@@ -13,12 +13,12 @@ import logging
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Кэш последней созданной карты для каждого пользователя
+# Кэш последней созданной карты
 last_chart_cache = {}
 
 @router.callback_query(F.data == "natal_chart")
 async def natal_chart_menu(callback: CallbackQuery):
-    text = md2_escape("🔮 **Создание натальной карты**\n\nНатальная карта — это астрологическая карта рождения, которая показывает положение планет в момент вашего рождения.")
+    text = md2_escape("🔮 **Создание натальной карты**\n\nНатальная карта — это астрологическая карта рождения.")
     await callback.message.edit_text(text, reply_markup=natal_options_keyboard(), parse_mode="MarkdownV2")
 
 @router.callback_query(F.data == "natal_input")
@@ -73,7 +73,7 @@ async def natal_finish(message: Message, state: FSMContext):
     processing_msg = await message.answer("🔮 **Создаю натальную карту...**\nЭто может занять до 30 секунд", parse_mode="Markdown")
     
     try:
-        chart_data = natal_service.create_natal_chart(
+        chart_data = await natal_service.create_natal_chart(
             data['name'], data['birth_date'], data['birth_time'], data['birth_place']
         )
         user_id = message.from_user.id
@@ -81,12 +81,14 @@ async def natal_finish(message: Message, state: FSMContext):
         await UserDB.update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
         await processing_msg.delete()
         
+        # SVG
         svg_path = natal_service.generate_svg_chart(chart_data)
         if svg_path and os.path.exists(svg_path):
             svg_file = FSInputFile(svg_path)
             await message.answer_document(svg_file, caption="🔮 **Схема натальной карты**")
             os.remove(svg_path)
         
+        # Текстовый отчёт
         report_text = natal_service.generate_report_text(chart_data)
         if len(report_text) > 4000:
             for i in range(0, len(report_text), 4000):
@@ -94,9 +96,9 @@ async def natal_finish(message: Message, state: FSMContext):
         else:
             await message.answer(report_text, parse_mode="Markdown")
         
+        # Кнопки: PDF и главное меню (без дополнительных прогнозов)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📄 Скачать PDF-отчёт", callback_data="pdf_natal_from_chart")],
-            [InlineKeyboardButton(text="✨ Дополнительные прогнозы", callback_data="extra_forecasts")],
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
         ])
         await message.answer("✨ **Натальная карта готова!**", reply_markup=keyboard, parse_mode="Markdown")
@@ -114,7 +116,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
             await callback.message.edit_text("❌ Нужны данные о рождении. Сначала создайте натальную карту.", reply_markup=back_to_menu_keyboard())
             return
         try:
-            chart_data = natal_service.create_natal_chart(
+            chart_data = await natal_service.create_natal_chart(
                 user_data.get('first_name', 'Пользователь'),
                 user_data['birth_date'],
                 user_data.get('birth_time', '12:00'),
@@ -136,43 +138,3 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Ошибка PDF: {e}")
         await processing_msg.edit_text(f"❌ Ошибка: {str(e)}", reply_markup=back_to_menu_keyboard())
-
-@router.callback_query(F.data == "extra_forecasts")
-async def extra_forecasts_menu(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    user_data = await UserDB.get_user(user_id)
-    if not user_data or not user_data.get('birth_date'):
-        await callback.message.edit_text(
-            "❌ Для дополнительных прогнозов нужны данные о рождении.\nСначала создайте натальную карту или заполните профиль.",
-            reply_markup=back_to_menu_keyboard()
-        )
-        return
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌙 Лунный календарь", callback_data="lunar_calendar")],
-        [InlineKeyboardButton(text="📅 Транзиты на сегодня", callback_data="transits_today")],
-        [InlineKeyboardButton(text="🍀 Благоприятные даты", callback_data="auspicious_dates")],
-        [InlineKeyboardButton(text="💑 Расширенная совместимость", callback_data="extended_compatibility")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")]
-    ])
-    await callback.message.edit_text(
-        "✨ **Дополнительные астрологические прогнозы**\n\nВыберите интересующий раздел:",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
-
-# Временные заглушки для подменю (пока просто уведомления)
-@router.callback_query(F.data == "lunar_calendar")
-async def lunar_calendar(callback: CallbackQuery):
-    await callback.answer("🌙 Функция в разработке. Скоро появится!", show_alert=True)
-
-@router.callback_query(F.data == "transits_today")
-async def transits_today(callback: CallbackQuery):
-    await callback.answer("📅 Функция в разработке. Скоро появится!", show_alert=True)
-
-@router.callback_query(F.data == "auspicious_dates")
-async def auspicious_dates(callback: CallbackQuery):
-    await callback.answer("🍀 Функция в разработке. Скоро появится!", show_alert=True)
-
-@router.callback_query(F.data == "extended_compatibility")
-async def extended_compatibility(callback: CallbackQuery):
-    await callback.answer("💑 Функция в разработке. Скоро появится!", show_alert=True)
