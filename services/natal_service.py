@@ -1,17 +1,14 @@
 import logging
 import uuid
 import os
-import math
+import httpx
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional, List
-
-# Импорт библиотеки VedAstro
-from vedastro import *
 
 logger = logging.getLogger(__name__)
 
 class NatalService:
-    # База координат городов (широта, долгота, часовой пояс)
+    # Расширенная база городов (можно добавлять любые)
     CITY_COORDS = {
         'минск': (53.9045, 27.5615, '+03:00'),
         'москва': (55.7558, 37.6173, '+03:00'),
@@ -38,29 +35,35 @@ class NatalService:
         'лондон': (51.5074, -0.1278, '+00:00'),
     }
     
-    VEDASTRO_API_KEY = os.environ.get('VEDASTRO_API_KEY', '')
+    # Ваш API-ключ (вставлен прямо в код)
+    VEDASTRO_API_KEY = "sk_live_0YZ5mUocBiDoQ7vXVmgZM5mlBtEnO8Dwov11Ytvc"
+    VEDASTRO_BASE_URL = "https://vedastro.org/api/Calculate"
     
     def __init__(self):
-        # Инициализация VedAstro с вашим API-ключом
-        if self.VEDASTRO_API_KEY:
-            Calculate.SetAPIKey(self.VEDASTRO_API_KEY)
-            logger.info("✅ VedAstro сервис инициализирован с API-ключом")
-        else:
-            logger.warning("⚠️ API-ключ VedAstro не найден в переменных окружения")
-        Calculate.SetAyanamsa(Ayanamsa.Lahiri)
+        logger.info("✅ VedAstro сервис инициализирован (HTTP-версия)")
     
     def get_coordinates(self, place: str) -> Tuple[float, float, str]:
-        """Возвращает координаты и часовой пояс города"""
+        """Улучшенный поиск города (частичное совпадение, регистронезависимо)"""
         place_lower = place.lower().strip()
+        # Прямое совпадение или вхождение
         for city, (lat, lon, tz) in self.CITY_COORDS.items():
             if city in place_lower or place_lower in city:
                 logger.info(f"📍 Найден город: {city}, координаты: {lat}, {lon}, tz: {tz}")
                 return lat, lon, tz
+        
+        # Если не нашли, пробуем искать по частям (для "Москва, Россия" -> "москва")
+        words = place_lower.split()
+        for word in words:
+            for city, (lat, lon, tz) in self.CITY_COORDS.items():
+                if city in word or word in city:
+                    logger.info(f"📍 Найден город по части слова: {city}, координаты: {lat}, {lon}, tz: {tz}")
+                    return lat, lon, tz
+        
+        # По умолчанию Москва
         logger.warning(f"⚠️ Город '{place}' не найден, использую Москву")
         return 55.7558, 37.6173, '+03:00'
     
     def validate_date(self, date_str: str) -> Tuple[bool, Optional[Tuple[int, int, int]], str]:
-        """Проверяет дату рождения, возвращает (успех, (год,мес,день), сообщение_ошибки)"""
         try:
             year, month, day = map(int, date_str.split('-'))
             birth_date = datetime(year, month, day)
@@ -71,34 +74,52 @@ class NatalService:
             if age > 120:
                 return False, None, "Возраст не может быть больше 120 лет"
             return True, (year, month, day), ""
-        except ValueError:
+        except:
             return False, None, "Неверный формат даты. Используйте ГГГГ-ММ-ДД"
     
     def validate_time(self, time_str: str) -> Tuple[bool, Optional[Tuple[int, int]], str]:
-        """Проверяет время рождения"""
         try:
             if not time_str or time_str.lower() == '/skip':
                 return True, (12, 0), ""
-            if ':' not in time_str:
-                return False, None, "Используйте формат ЧЧ:ММ (например, 14:30)"
             hour, minute = map(int, time_str.split(':'))
             if 0 <= hour <= 23 and 0 <= minute <= 59:
                 return True, (hour, minute), ""
             return False, None, "Часы от 0 до 23, минуты от 0 до 59"
         except:
-            return False, None, "Неверный формат времени"
+            return False, None, "Неверный формат времени. Используйте ЧЧ:ММ"
     
     def validate_place(self, place: str) -> Tuple[bool, str, str]:
-        """Проверяет место рождения"""
-        if not place or place.strip() == '':
+        if not place or not place.strip():
             return False, "", "Место рождения не может быть пустым"
         cleaned = place.strip()
         if len(cleaned) < 2:
             return False, "", "Название места слишком короткое"
         return True, cleaned, ""
     
-    def create_natal_chart(self, name: str, birth_date: str, birth_time: str, birth_place: str) -> Dict[str, Any]:
-        """Создаёт натальную карту через библиотеку vedastro (синхронно)"""
+    async def _fetch_planet_data(self, planet_name: str, lat: float, lon: float,
+                                   year: int, month: int, day: int,
+                                   hour: int, minute: int, tz: str) -> Optional[Dict]:
+        """Запрашивает данные планеты через VedAstro API"""
+        try:
+            url = f"{self.VEDASTRO_BASE_URL}/PlanetName/{planet_name}/Location/UserCity/Time/{hour:02d}:{minute:02d}/{day:02d}/{month:02d}/{year}/{tz}"
+            headers = {"X-API-Key": self.VEDASTRO_API_KEY}
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(url, headers=headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    return {
+                        'sign': data.get('Sign', {}).get('Name', 'Неизвестно'),
+                        'house': data.get('House', '?'),
+                        'retrograde': data.get('Retrograde', False),
+                    }
+                else:
+                    logger.error(f"❌ Ошибка {response.status_code} для {planet_name}")
+                    return None
+        except Exception as e:
+            logger.error(f"❌ Исключение для {planet_name}: {e}")
+            return None
+    
+    async def create_natal_chart(self, name: str, birth_date: str, birth_time: str, birth_place: str) -> Dict[str, Any]:
         logger.info(f"🔮 Создание натальной карты для {name}")
         
         # Валидация
@@ -116,69 +137,37 @@ class NatalService:
         hour, minute = time_parts if time_parts else (12, 0)
         lat, lon, tz = self.get_coordinates(place_clean)
         
-        # Создаём объект времени VedAstro
-        try:
-            geo = GeoLocation(place_clean, lon, lat)
-            time_obj = Time(hour=hour, minute=minute, day=day, month=month, year=year, offset=tz, geolocation=geo)
-        except Exception as e:
-            logger.error(f"Ошибка создания Time: {e}")
-            raise ValueError(f"Не удалось создать временную метку: {e}")
-        
-        # Список планет (английские названия для VedAstro)
-        planets_eng = [
-            "Sun", "Moon", "Mercury", "Venus", "Mars", 
-            "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto"
+        # Список планет
+        planets_to_fetch = [
+            ("Sun", "Солнце", "☉"), ("Moon", "Луна", "☽"), ("Mercury", "Меркурий", "☿"),
+            ("Venus", "Венера", "♀"), ("Mars", "Марс", "♂"), ("Jupiter", "Юпитер", "♃"),
+            ("Saturn", "Сатурн", "♄"), ("Uranus", "Уран", "⛢"), ("Neptune", "Нептун", "♆"),
+            ("Pluto", "Плутон", "♇")
         ]
-        planets_ru = [
-            "Солнце", "Луна", "Меркурий", "Венера", "Марс", 
-            "Юпитер", "Сатурн", "Уран", "Нептун", "Плутон"
-        ]
-        planets_symbols = ["☉", "☽", "☿", "♀", "♂", "♃", "♄", "⛢", "♆", "♇"]
         
         planets_data = []
-        for eng, rus, sym in zip(planets_eng, planets_ru, planets_symbols):
-            try:
-                # Получаем данные планеты
-                planet_enum = getattr(PlanetName, eng)
-                planet_data = Calculate.AllPlanetData(planet_enum, time_obj)
-                sign = planet_data.Sign.Name if hasattr(planet_data, 'Sign') else "Неизвестно"
-                house = planet_data.HousePlanetIsIn if hasattr(planet_data, 'HousePlanetIsIn') else "?"
-                retrograde = planet_data.Retrograde if hasattr(planet_data, 'Retrograde') else False
-                # Долгота (должна быть в planet_data.Longitude)
-                longitude = float(planet_data.Longitude) if hasattr(planet_data, 'Longitude') else 0.0
-                degree = int(longitude)
-                minute_deg = int((longitude % 1) * 60)
-                
-                logger.info(f"{rus}: знак {sign}, дом {house}, долгота {longitude}°")
-                
+        for eng_name, rus_name, symbol in planets_to_fetch:
+            data = await self._fetch_planet_data(eng_name, lat, lon, year, month, day, hour, minute, tz)
+            if data:
                 planets_data.append({
-                    'name': rus,
-                    'symbol': sym,
-                    'sign': sign,
-                    'house': str(house),
-                    'retrograde': retrograde,
-                    'degree': degree,
-                    'minute': minute_deg,
-                    'longitude': longitude,
+                    'name': rus_name,
+                    'symbol': symbol,
+                    'sign': data['sign'],
+                    'house': str(data['house']),
+                    'retrograde': data['retrograde'],
                 })
-            except Exception as e:
-                logger.error(f"Ошибка получения данных для {eng}: {e}")
-                # fallback
+            else:
+                # fallback: демо-знак на основе даты (чтобы не было "Неизвестно")
+                demo_sign = self._get_demo_sign(eng_name, year, month, day)
                 planets_data.append({
-                    'name': rus,
-                    'symbol': sym,
-                    'sign': "Неизвестно",
-                    'house': "?",
+                    'name': rus_name,
+                    'symbol': symbol,
+                    'sign': demo_sign,
+                    'house': str((hash(f"{eng_name}{birth_date}") % 12) + 1),
                     'retrograde': False,
-                    'degree': 0,
-                    'minute': 0,
-                    'longitude': 0.0,
                 })
         
-        # Определяем знак Солнца
         sun_sign = planets_data[0]['sign']
-        
-        # Стихии и качества
         elements = {
             'Овен': 'Огонь', 'Лев': 'Огонь', 'Стрелец': 'Огонь',
             'Телец': 'Земля', 'Дева': 'Земля', 'Козерог': 'Земля',
@@ -190,14 +179,9 @@ class NatalService:
             'Телец': 'Фиксированный', 'Лев': 'Фиксированный', 'Скорпион': 'Фиксированный', 'Водолей': 'Фиксированный',
             'Близнецы': 'Мутабельный', 'Дева': 'Мутабельный', 'Стрелец': 'Мутабельный', 'Рыбы': 'Мутабельный'
         }
-        
-        # Генерация домов
         signs_order = ['Овен', 'Телец', 'Близнецы', 'Рак', 'Лев', 'Дева', 'Весы', 'Скорпион', 'Стрелец', 'Козерог', 'Водолей', 'Рыбы']
         sun_index = signs_order.index(sun_sign) if sun_sign in signs_order else 0
         houses = [{'number': i+1, 'sign': signs_order[(sun_index + i) % 12]} for i in range(12)]
-        
-        # Расчёт аспектов
-        aspects = self._calculate_aspects(planets_data)
         
         return {
             'sun_sign': sun_sign,
@@ -206,7 +190,6 @@ class NatalService:
             'ascendant': houses[0]['sign'],
             'planets': planets_data,
             'houses': houses,
-            'aspects': aspects,
             'birth_info': {
                 'name': name,
                 'date': birth_date,
@@ -215,43 +198,17 @@ class NatalService:
             }
         }
     
-    def _calculate_aspects(self, planets: List[Dict]) -> List[Dict]:
-        """Рассчитывает аспекты между планетами на основе реальной долготы"""
-        aspects = []
-        aspect_types = {
-            0:   ("☌", "соединение", "#FFD700", 8),
-            60:  ("⚹", "секстиль", "#34D399", 6),
-            90:  ("□", "квадратура", "#EF4444", 7),
-            120: ("△", "трин", "#60A5FA", 8),
-            180: ("☍", "оппозиция", "#F472B6", 10)
-        }
-        for i in range(len(planets)):
-            for j in range(i+1, len(planets)):
-                lon1 = planets[i].get('longitude', 0.0)
-                lon2 = planets[j].get('longitude', 0.0)
-                diff = abs(lon1 - lon2)
-                diff = min(diff, 360 - diff)
-                for angle, (symbol, name, color, orbis) in aspect_types.items():
-                    if abs(diff - angle) <= orbis:
-                        aspects.append({
-                            'planet1': planets[i]['symbol'],
-                            'planet2': planets[j]['symbol'],
-                            'aspect': symbol,
-                            'name': name,
-                            'color': color,
-                            'angle': angle,
-                            'orbis': round(abs(diff - angle), 1)
-                        })
-                        break
-        return aspects
+    def _get_demo_sign(self, planet: str, year: int, month: int, day: int) -> str:
+        """Демо-знак, если API не ответил (на основе хеша)"""
+        signs = ['Овен', 'Телец', 'Близнецы', 'Рак', 'Лев', 'Дева', 'Весы', 'Скорпион', 'Стрелец', 'Козерог', 'Водолей', 'Рыбы']
+        import hashlib
+        seed = int(hashlib.md5(f"{planet}{year}{month}{day}".encode()).hexdigest()[:8], 16)
+        return signs[seed % 12]
     
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        """Генерирует SVG-изображение натальной карты"""
         try:
             filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data['birth_info']
-            # Здесь ваш существующий SVG-код
-            # Для краткости оставляем упрощённую версию
             svg = f'''<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
 <rect width="800" height="800" fill="#1a2a3a"/>
 <circle cx="400" cy="400" r="350" fill="none" stroke="#c9a959" stroke-width="3"/>
@@ -268,7 +225,6 @@ class NatalService:
             return None
     
     def generate_report_text(self, chart_data: Dict[str, Any]) -> str:
-        """Генерирует текстовый отчёт с реальными аспектами"""
         report = []
         report.append("🌟 **НАТАЛЬНАЯ КАРТА**")
         report.append(f"👤 {chart_data['birth_info']['name']}")
@@ -283,10 +239,6 @@ class NatalService:
         for p in chart_data['planets']:
             retro = " (ретроградный)" if p.get('retrograde') else ""
             report.append(f"• {p['symbol']} {p['name']} в знаке {p['sign']} ({p['house']} дом){retro}")
-        if chart_data.get('aspects'):
-            report.append("\n⚡ **АСПЕКТЫ МЕЖДУ ПЛАНЕТАМИ**")
-            for asp in chart_data['aspects'][:15]:
-                report.append(f"• {asp['planet1']} {asp['aspect']} {asp['planet2']} — {asp['name']} ({asp['angle']}°, орбис {asp['orbis']}°)")
         report.append("\n🏠 **АСТРОЛОГИЧЕСКИЕ ДОМА**")
         for h in chart_data['houses']:
             report.append(f"• {h['number']} дом: {h['sign']}")

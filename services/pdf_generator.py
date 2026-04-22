@@ -100,18 +100,6 @@ class ProfessionalPDFGenerator:
             y_temp -= 18
         y = height - 160 - 25 - 18 * half - 40
         
-        if chart_data.get('aspects'):
-            c.setFont(FONT_BOLD_NAME, 14)
-            c.setFillColor(TEXT_GOLD)
-            c.drawString(50, y, "АСПЕКТЫ ПЛАНЕТ")
-            y -= 25
-            c.setFont(FONT_NAME, 10)
-            c.setFillColor(TEXT_WHITE)
-            for asp in chart_data['aspects'][:10]:
-                c.drawString(70, y, f"{asp['planet1']} {asp['aspect']} {asp['planet2']} — {asp['name']} ({asp['angle']}°, орбис {asp['orbis']}°)")
-                y -= 15
-            y -= 15
-        
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "АСТРОЛОГИЧЕСКИЕ ДОМА")
