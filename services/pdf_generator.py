@@ -66,6 +66,7 @@ class ProfessionalPDFGenerator:
         self._draw_background(c, width, height)
         self._draw_decorative_frame(c, width, height)
 
+        # Заголовок
         c.setFont(FONT_BOLD_NAME, 26)
         c.setFillColor(TEXT_GOLD)
         c.drawCentredString(width/2, height-50, "✨ НАТАЛЬНАЯ КАРТА ✨")
@@ -100,7 +101,7 @@ class ProfessionalPDFGenerator:
         c.drawString(70, y, f"⬆ Асцендент (ASC): {chart_data.get('ascendant', 'Неизвестно')}")
         y -= 40
 
-        # Планеты (две колонки)
+        # Планеты - ДВЕ КОЛОНКИ
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "ПОЛОЖЕНИЕ ПЛАНЕТ")
@@ -111,19 +112,24 @@ class ProfessionalPDFGenerator:
         left_x = 70
         right_x = 350
         half = (len(planets) + 1) // 2
+        # Левая колонка
+        y_left = y
         for i, p in enumerate(planets[:half]):
             retro = " (ретроградный)" if p.get('retrograde') else ""
-            c.drawString(left_x, y, f"{p.get('symbol', '')} {p.get('name', '')}: {p.get('sign', '')} ({p.get('house', '')} дом){retro}")
-            y -= 18
-        y2 = height - 160 - 25 - 18 * half
+            text = f"{p.get('symbol', '')} {p.get('name', '')}: {p.get('sign', '')} ({p.get('house', '')} дом){retro}"
+            c.drawString(left_x, y_left, text)
+            y_left -= 18
+        # Правая колонка
+        y_right = y
         for i, p in enumerate(planets[half:]):
             retro = " (ретроградный)" if p.get('retrograde') else ""
-            c.drawString(right_x, y2, f"{p.get('symbol', '')} {p.get('name', '')}: {p.get('sign', '')} ({p.get('house', '')} дом){retro}")
-            y2 -= 18
-        # Переходим к следующему блоку после колонок
-        y = height - 160 - 25 - 18 * half - 40
+            text = f"{p.get('symbol', '')} {p.get('name', '')}: {p.get('sign', '')} ({p.get('house', '')} дом){retro}"
+            c.drawString(right_x, y_right, text)
+            y_right -= 18
+        # Смещаем y ниже самой нижней из колонок
+        y = min(y_left, y_right) - 40
 
-        # Дома (4 колонки)
+        # Дома - ЧЕТЫРЕ КОЛОНКИ
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "АСТРОЛОГИЧЕСКИЕ ДОМА")
@@ -139,6 +145,7 @@ class ProfessionalPDFGenerator:
             x = 50 + col * col_width
             y_pos = y - row * 18
             c.drawString(x, y_pos, f"{house.get('number', '')} дом: {house.get('sign', '')}")
+        # Сдвигаем y после домов
         y = y - rows * 18 - 40
 
         # Интерпретация
@@ -164,7 +171,21 @@ class ProfessionalPDFGenerator:
         c.setFillColor(TEXT_WHITE)
         sun_sign = chart_data.get('sun_sign', 'Неизвестно')
         interp = interpretations.get(sun_sign, 'у вас уникальная личность.')
-        c.drawString(70, y, f"☉ Солнце в {sun_sign}: {interp}")
+        # Разбиваем интерпретацию, если она длинная
+        if c.stringWidth(interp, FONT_NAME, 11) > width - 100:
+            words = interp.split()
+            line = ""
+            y_line = y
+            for word in words:
+                if c.stringWidth(line + word, FONT_NAME, 11) < width - 100:
+                    line += word + " "
+                else:
+                    c.drawString(70, y_line, line)
+                    y_line -= 15
+                    line = word + " "
+            c.drawString(70, y_line, line)
+        else:
+            c.drawString(70, y, interp)
 
         # Нижний колонтитул
         c.setFont(FONT_NAME, 9)
@@ -202,26 +223,17 @@ class ProfessionalPDFGenerator:
         c.setFont(FONT_NAME, 12)
         c.setFillColor(TEXT_WHITE)
         horoscope_text = data.get('horoscope', 'Сегодня звёзды благоволят вам.')
-        # Умный перенос
-        lines = []
+        # Умный перенос текста
         words = horoscope_text.split()
         line = ""
         for word in words:
             if c.stringWidth(line + word, FONT_NAME, 12) < width - 100:
                 line += word + " "
             else:
-                lines.append(line)
+                c.drawString(50, y, line)
+                y -= 20
                 line = word + " "
-        lines.append(line)
-
-        for line in lines:
-            if y < 100:
-                c.showPage()
-                self._draw_background(c, width, height)
-                self._draw_decorative_frame(c, width, height)
-                y = height - 50
-            c.drawString(50, y, line)
-            y -= 20
+        c.drawString(50, y, line)
 
         c.setFont(FONT_NAME, 9)
         c.setFillColor(TEXT_LIGHT)
