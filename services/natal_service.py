@@ -2,13 +2,14 @@ import logging
 import uuid
 import os
 import httpx
+import math
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional, List
 
 logger = logging.getLogger(__name__)
 
 class NatalService:
-    # Расширенная база городов (можно добавлять любые)
+    # Расширенная база городов
     CITY_COORDS = {
         'минск': (53.9045, 27.5615, '+03:00'),
         'москва': (55.7558, 37.6173, '+03:00'),
@@ -35,7 +36,6 @@ class NatalService:
         'лондон': (51.5074, -0.1278, '+00:00'),
     }
     
-    # Ваш API-ключ (вставлен прямо в код)
     VEDASTRO_API_KEY = "sk_live_0YZ5mUocBiDoQ7vXVmgZM5mlBtEnO8Dwov11Ytvc"
     VEDASTRO_BASE_URL = "https://vedastro.org/api/Calculate"
     
@@ -43,23 +43,20 @@ class NatalService:
         logger.info("✅ VedAstro сервис инициализирован (HTTP-версия)")
     
     def get_coordinates(self, place: str) -> Tuple[float, float, str]:
-        """Улучшенный поиск города (частичное совпадение, регистронезависимо)"""
+        """Улучшенный поиск города (частичное совпадение)"""
         place_lower = place.lower().strip()
-        # Прямое совпадение или вхождение
+        # Прямое совпадение
         for city, (lat, lon, tz) in self.CITY_COORDS.items():
             if city in place_lower or place_lower in city:
                 logger.info(f"📍 Найден город: {city}, координаты: {lat}, {lon}, tz: {tz}")
                 return lat, lon, tz
-        
-        # Если не нашли, пробуем искать по частям (для "Москва, Россия" -> "москва")
+        # Поиск по словам
         words = place_lower.split()
         for word in words:
             for city, (lat, lon, tz) in self.CITY_COORDS.items():
                 if city in word or word in city:
                     logger.info(f"📍 Найден город по части слова: {city}, координаты: {lat}, {lon}, tz: {tz}")
                     return lat, lon, tz
-        
-        # По умолчанию Москва
         logger.warning(f"⚠️ Город '{place}' не найден, использую Москву")
         return 55.7558, 37.6173, '+03:00'
     
@@ -99,7 +96,6 @@ class NatalService:
     async def _fetch_planet_data(self, planet_name: str, lat: float, lon: float,
                                    year: int, month: int, day: int,
                                    hour: int, minute: int, tz: str) -> Optional[Dict]:
-        """Запрашивает данные планеты через VedAstro API"""
         try:
             url = f"{self.VEDASTRO_BASE_URL}/PlanetName/{planet_name}/Location/UserCity/Time/{hour:02d}:{minute:02d}/{day:02d}/{month:02d}/{year}/{tz}"
             headers = {"X-API-Key": self.VEDASTRO_API_KEY}
@@ -122,7 +118,6 @@ class NatalService:
     async def create_natal_chart(self, name: str, birth_date: str, birth_time: str, birth_place: str) -> Dict[str, Any]:
         logger.info(f"🔮 Создание натальной карты для {name}")
         
-        # Валидация
         valid_date, date_parts, date_err = self.validate_date(birth_date)
         if not valid_date:
             raise ValueError(date_err)
@@ -137,7 +132,6 @@ class NatalService:
         hour, minute = time_parts if time_parts else (12, 0)
         lat, lon, tz = self.get_coordinates(place_clean)
         
-        # Список планет
         planets_to_fetch = [
             ("Sun", "Солнце", "☉"), ("Moon", "Луна", "☽"), ("Mercury", "Меркурий", "☿"),
             ("Venus", "Венера", "♀"), ("Mars", "Марс", "♂"), ("Jupiter", "Юпитер", "♃"),
@@ -157,7 +151,7 @@ class NatalService:
                     'retrograde': data['retrograde'],
                 })
             else:
-                # fallback: демо-знак на основе даты (чтобы не было "Неизвестно")
+                # fallback знак на основе хеша
                 demo_sign = self._get_demo_sign(eng_name, year, month, day)
                 planets_data.append({
                     'name': rus_name,
@@ -199,24 +193,126 @@ class NatalService:
         }
     
     def _get_demo_sign(self, planet: str, year: int, month: int, day: int) -> str:
-        """Демо-знак, если API не ответил (на основе хеша)"""
         signs = ['Овен', 'Телец', 'Близнецы', 'Рак', 'Лев', 'Дева', 'Весы', 'Скорпион', 'Стрелец', 'Козерог', 'Водолей', 'Рыбы']
         import hashlib
         seed = int(hashlib.md5(f"{planet}{year}{month}{day}".encode()).hexdigest()[:8], 16)
         return signs[seed % 12]
     
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
+        """Красивая SVG-карта с отображением планет на круге"""
         try:
             filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data['birth_info']
+            planets = chart_data['planets']
+            asc = chart_data['ascendant']
+            
+            # Символы знаков зодиака
+            signs_ru = ['Овен', 'Телец', 'Близнецы', 'Рак', 'Лев', 'Дева', 'Весы', 'Скорпион', 'Стрелец', 'Козерог', 'Водолей', 'Рыбы']
+            signs_symbols = ['♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓']
+            
+            # Цвета планет
+            planet_colors = {
+                "☉": "#FBBF24", "☽": "#E5E7EB", "☿": "#34D399", "♀": "#F472B6",
+                "♂": "#EF4444", "♃": "#60A5FA", "♄": "#A78BFA", "⛢": "#2DD4BF", "♆": "#3B82F6", "♇": "#EC4899"
+            }
+            
+            # Позиции планет на круге (упрощённо: по дому)
+            import math
+            positions = []
+            for p in planets:
+                try:
+                    house_num = int(p['house']) if p['house'].isdigit() else 1
+                    angle = (house_num - 1) * 30  # 0° для 1 дома, 30° для 2 и т.д.
+                    rad = math.radians(angle - 90)
+                    radius = 240
+                    cx = 400 + radius * math.cos(rad)
+                    cy = 400 + radius * math.sin(rad)
+                    positions.append((cx, cy, p['symbol'], p['name']))
+                except:
+                    pass
+            
+            # Построение SVG
             svg = f'''<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
-<rect width="800" height="800" fill="#1a2a3a"/>
-<circle cx="400" cy="400" r="350" fill="none" stroke="#c9a959" stroke-width="3"/>
-<text x="400" y="65" text-anchor="middle" fill="#c9a959" font-size="22">✨ Натальная карта ✨</text>
-<text x="400" y="100" text-anchor="middle" fill="#c9a959" font-size="16">{info['name']}</text>
-<text x="400" y="125" text-anchor="middle" fill="#c9a959" font-size="12">{info['date']} {info['time']} {info['place']}</text>
-<text x="400" y="750" text-anchor="middle" fill="#c9a959" font-size="12">Асцендент: {chart_data['ascendant']}</text>
+    <defs>
+        <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#1F2937"/>
+            <stop offset="100%" stop-color="#0D1117"/>
+        </radialGradient>
+        <filter id="glow">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+        </filter>
+    </defs>
+    <rect width="800" height="800" fill="url(#bgGrad)"/>
+    
+    <!-- Звёздный фон -->
+    <g fill="#FFFFFF" opacity="0.3">
+        <circle cx="100" cy="150" r="1.5"/><circle cx="700" cy="80" r="1"/>
+        <circle cx="750" cy="400" r="1.5"/><circle cx="50" cy="650" r="1"/>
+        <circle cx="200" cy="750" r="1.5"/><circle cx="650" cy="720" r="1"/>
+    </g>
+    
+    <!-- Заголовок -->
+    <text x="400" y="45" text-anchor="middle" fill="#FFD700" font-size="24" font-weight="bold" font-family="Georgia, serif">✨ НАТАЛЬНАЯ КАРТА ✨</text>
+    <text x="400" y="75" text-anchor="middle" fill="#E5E7EB" font-size="16" font-family="Arial, sans-serif">{info['name']}</text>
+    <text x="400" y="100" text-anchor="middle" fill="#8B5CF6" font-size="12" font-family="Arial, sans-serif">{info['date']} в {info['time']} | {info['place']}</text>
+    
+    <!-- Круги карты -->
+    <circle cx="400" cy="400" r="350" fill="none" stroke="#8B5CF6" stroke-width="2.5" opacity="0.8"/>
+    <circle cx="400" cy="400" r="280" fill="none" stroke="#8B5CF6" stroke-width="1.5" opacity="0.6"/>
+    <circle cx="400" cy="400" r="200" fill="none" stroke="#8B5CF6" stroke-width="1" opacity="0.4"/>
+    <circle cx="400" cy="400" r="120" fill="none" stroke="#8B5CF6" stroke-width="1" opacity="0.3"/>
+    
+    <!-- Линии домов -->
+    <line x1="400" y1="50" x2="400" y2="750" stroke="#8B5CF6" stroke-width="1" opacity="0.3"/>
+    <line x1="50" y1="400" x2="750" y2="400" stroke="#8B5CF6" stroke-width="1" opacity="0.3"/>
+    <line x1="153" y1="153" x2="647" y2="647" stroke="#8B5CF6" stroke-width="1" opacity="0.3"/>
+    <line x1="647" y1="153" x2="153" y2="647" stroke="#8B5CF6" stroke-width="1" opacity="0.3"/>
+    
+    <!-- Знаки зодиака по углам -->
+    <text x="400" y="85" text-anchor="middle" fill="#FFD700" font-size="24">♈</text>
+    <text x="715" y="415" text-anchor="middle" fill="#FFD700" font-size="24">♉</text>
+    <text x="400" y="745" text-anchor="middle" fill="#FFD700" font-size="24">♊</text>
+    <text x="85" y="415" text-anchor="middle" fill="#FFD700" font-size="24">♋</text>
+    <text x="647" y="153" text-anchor="middle" fill="#FFD700" font-size="24">♌</text>
+    <text x="153" y="647" text-anchor="middle" fill="#FFD700" font-size="24">♍</text>
+    <text x="153" y="153" text-anchor="middle" fill="#FFD700" font-size="24">♎</text>
+    <text x="647" y="647" text-anchor="middle" fill="#FFD700" font-size="24">♏</text>
+    
+    <!-- Асцендент -->
+    <text x="400" y="200" text-anchor="middle" fill="#FFD700" font-size="18" font-weight="bold">ASC {asc}</text>
+    
+    <!-- Планеты -->
+    <g filter="url(#glow)">'''
+            
+            for cx, cy, sym, name in positions:
+                color = planet_colors.get(sym, "#E5E7EB")
+                svg += f'''
+        <circle cx="{cx}" cy="{cy}" r="16" fill="#0D1117" stroke="{color}" stroke-width="2"/>
+        <text x="{cx}" y="{cy+5}" text-anchor="middle" fill="{color}" font-size="18" font-family="Arial, sans-serif">{sym}</text>'''
+            
+            svg += f'''
+    </g>
+    
+    <!-- Легенда -->
+    <g transform="translate(30, 580)">
+        <rect x="0" y="0" width="180" height="180" rx="10" fill="#1F2937" opacity="0.9" stroke="#8B5CF6" stroke-width="1"/>
+        <text x="90" y="25" text-anchor="middle" fill="#FFD700" font-size="14" font-weight="bold">Планеты</text>'''
+            
+            for i, (sym, name) in enumerate([("☉","Солнце"),("☽","Луна"),("☿","Меркурий"),("♀","Венера"),("♂","Марс"),("♃","Юпитер"),("♄","Сатурн")]):
+                color = planet_colors.get(sym, "#E5E7EB")
+                svg += f'''
+        <text x="15" y="{50 + i*20}" fill="{color}" font-size="16">{sym}</text>
+        <text x="40" y="{55 + i*20}" fill="#E5E7EB" font-size="11">{name}</text>'''
+            
+            svg += f'''
+        <text x="90" y="170" text-anchor="middle" fill="#E5E7EB" font-size="10">☉ в {chart_data['sun_sign']}</text>
+    </g>
 </svg>'''
+            
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(svg)
             return filename

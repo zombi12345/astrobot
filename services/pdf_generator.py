@@ -34,10 +34,12 @@ ACCENT_PURPLE = HexColor('#8B5CF6')
 
 class ProfessionalPDFGenerator:
     def create_natal_chart_pdf(self, chart_data: dict) -> str:
+        """Создаёт PDF-отчёт натальной карты"""
         filename = f"natal_report_{uuid.uuid4().hex}.pdf"
         c = canvas.Canvas(filename, pagesize=A4)
         width, height = A4
         
+        # Фон
         c.setFillColor(BG_DARK)
         c.rect(0, 0, width, height, fill=1)
         c.setStrokeColor(ACCENT_PURPLE)
@@ -47,6 +49,7 @@ class ProfessionalPDFGenerator:
         c.setLineWidth(1)
         c.rect(25, 25, width-50, height-50)
         
+        # Заголовок
         c.setFont(FONT_BOLD_NAME, 26)
         c.setFillColor(TEXT_GOLD)
         c.drawCentredString(width/2, height-50, "✨ НАТАЛЬНАЯ КАРТА ✨")
@@ -142,6 +145,32 @@ class ProfessionalPDFGenerator:
         c.setFillColor(TEXT_LIGHT)
         c.drawCentredString(width/2, 40, "🔮 Астрология — это инструмент самопознания. Звёзды указывают путь, но выбор всегда за вами!")
         c.drawCentredString(width/2, 25, f"Сгенерировано AstroBot • {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+        c.save()
+        return filename
+    
+    def create_horoscope_pdf(self, data: dict) -> str:
+        """Заглушка для PDF гороскопа (чтобы избежать ошибки)"""
+        filename = f"horoscope_{uuid.uuid4().hex}.pdf"
+        c = canvas.Canvas(filename, pagesize=A4)
+        width, height = A4
+        c.setFillColor(BG_DARK)
+        c.rect(0, 0, width, height, fill=1)
+        c.setFont(FONT_BOLD_NAME, 24)
+        c.setFillColor(TEXT_GOLD)
+        c.drawCentredString(width/2, height-50, "🌙 ГОРОСКОП")
+        c.setFont(FONT_NAME, 14)
+        c.setFillColor(TEXT_WHITE)
+        c.drawCentredString(width/2, height-100, f"Для {data.get('user_name', 'Пользователь')}")
+        c.drawCentredString(width/2, height-130, f"Дата: {data.get('date', datetime.now().strftime('%d.%m.%Y'))}")
+        text = data.get('horoscope', 'Гороскоп временно недоступен.')
+        c.setFont(FONT_NAME, 12)
+        y = height - 180
+        for line in text.split('\n'):
+            c.drawString(50, y, line[:80])
+            y -= 20
+            if y < 50:
+                c.showPage()
+                y = height - 50
         c.save()
         return filename
 

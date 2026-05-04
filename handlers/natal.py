@@ -81,7 +81,7 @@ async def natal_finish(message: Message, state: FSMContext):
         await UserDB.update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
         await processing_msg.delete()
         
-        # SVG
+        # Генерируем и отправляем SVG
         svg_path = natal_service.generate_svg_chart(chart_data)
         if svg_path and os.path.exists(svg_path):
             svg_file = FSInputFile(svg_path)
@@ -96,7 +96,7 @@ async def natal_finish(message: Message, state: FSMContext):
         else:
             await message.answer(report_text, parse_mode="Markdown")
         
-        # Кнопки: PDF и главное меню (без дополнительных прогнозов)
+        # Кнопки
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📄 Скачать PDF-отчёт", callback_data="pdf_natal_from_chart")],
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
