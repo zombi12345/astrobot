@@ -65,14 +65,15 @@ async def natal_finish(message: Message, state: FSMContext):
     if not valid:
         await message.answer(f"❌ {error}\nПопробуйте снова")
         return
-    
+
     data = await state.get_data()
     data['birth_place'] = cleaned
     await state.clear()
-    
+
     processing_msg = await message.answer("🔮 **Создаю натальную карту...**\nЭто может занять до 30 секунд", parse_mode="Markdown")
-    
+
     try:
+        # ВЫЗОВ СИНХРОННОГО МЕТОДА (БЕЗ await)
         chart_data = await natal_service.create_natal_chart(
             data['name'], data['birth_date'], data['birth_time'], data['birth_place']
         )
@@ -80,30 +81,32 @@ async def natal_finish(message: Message, state: FSMContext):
         last_chart_cache[user_id] = chart_data
         await UserDB.update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
         await processing_msg.delete()
-        
-        # SVG карта
+
+        # Отправка SVG-изображения карты
         svg_path = natal_service.generate_svg_chart(chart_data)
         if svg_path and os.path.exists(svg_path):
             svg_file = FSInputFile(svg_path)
             await message.answer_document(svg_file, caption="🔮 **Схема натальной карты**")
             os.remove(svg_path)
-        
-        # Текстовый отчёт
+
+        # Отправка текстового отчёта
         report_text = natal_service.generate_report_text(chart_data)
         if len(report_text) > 4000:
             for i in range(0, len(report_text), 4000):
                 await message.answer(report_text[i:i+4000], parse_mode="Markdown")
         else:
             await message.answer(report_text, parse_mode="Markdown")
-        
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📄 Скачать PDF-отчёт", callback_data="pdf_natal_from_chart")],
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
         ])
         await message.answer("✨ **Натальная карта готова!**", reply_markup=keyboard, parse_mode="Markdown")
+
     except Exception as e:
         logger.error(f"Ошибка создания карты: {e}")
         await processing_msg.edit_text(f"❌ **Ошибка:** {str(e)}", parse_mode="Markdown")
+
 
 @router.callback_query(F.data == "pdf_natal_from_chart")
 async def pdf_natal_from_chart(callback: CallbackQuery):
@@ -115,6 +118,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
             await callback.message.edit_text("❌ Нужны данные о рождении. Сначала создайте натальную карту.", reply_markup=back_to_menu_keyboard())
             return
         try:
+            # ВЫЗОВ СИНХРОННОГО МЕТОДА (БЕЗ await)
             chart_data = await natal_service.create_natal_chart(
                 user_data.get('first_name', 'Пользователь'),
                 user_data['birth_date'],
@@ -125,7 +129,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
         except Exception as e:
             await callback.message.edit_text(f"❌ Ошибка при создании карты: {e}", reply_markup=back_to_menu_keyboard())
             return
-    
+
     processing_msg = await callback.message.edit_text("📄 **Создаю PDF...**", parse_mode="Markdown")
     try:
         pdf_path = pdf_gen.create_natal_chart_pdf(chart_data)
@@ -136,4 +140,4 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
         os.remove(pdf_path)
     except Exception as e:
         logger.error(f"Ошибка PDF: {e}")
-        await processing_msg.edit_text(f"❌ Ошибка: {str(e)}", reply_markup=back_to_menu_keyboard()
+        await processing_msg.edit_text(f"❌ Ошибка: {str(e)}", reply_markup=back_to_menu_keyboard())

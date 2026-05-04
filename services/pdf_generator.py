@@ -48,9 +48,10 @@ class ProfessionalPDFGenerator:
                 return
             except Exception as e:
                 logger.warning(f"Не удалось загрузить фон: {e}")
+        # Если изображения нет, заливаем фон градиентным цветом
         c.setFillColor(BG_DARK)
         c.rect(0, 0, width, height, fill=1)
-    
+
     def _draw_decorative_frame(self, c, width, height):
         c.setStrokeColor(ACCENT_PURPLE)
         c.setLineWidth(2)
@@ -58,31 +59,31 @@ class ProfessionalPDFGenerator:
         c.setStrokeColor(TEXT_GOLD)
         c.setLineWidth(1)
         c.rect(25, 25, width-50, height-50)
-    
+
     def create_natal_chart_pdf(self, chart_data: dict) -> str:
         filename = f"natal_report_{uuid.uuid4().hex}.pdf"
         c = canvas.Canvas(filename, pagesize=A4)
         width, height = A4
-        
+
         self._draw_background(c, width, height)
         self._draw_decorative_frame(c, width, height)
-        
+
         c.setFont(FONT_BOLD_NAME, 26)
         c.setFillColor(TEXT_GOLD)
         c.drawCentredString(width/2, height-50, "✨ НАТАЛЬНАЯ КАРТА ✨")
-        
-        info = chart_data['birth_info']
+
+        info = chart_data.get('birth_info', {})
         c.setFont(FONT_BOLD_NAME, 16)
         c.setFillColor(TEXT_WHITE)
-        c.drawCentredString(width/2, height-85, info['name'])
+        c.drawCentredString(width/2, height-85, info.get('name', 'Пользователь'))
         c.setFont(FONT_NAME, 12)
         c.setFillColor(TEXT_LIGHT)
-        c.drawCentredString(width/2, height-105, f"{info['date']} в {info['time']} | {info['place']}")
-        
+        c.drawCentredString(width/2, height-105, f"{info.get('date', '')} в {info.get('time', '')} | {info.get('place', '')}")
+
         c.setStrokeColor(TEXT_GOLD)
         c.setLineWidth(1.5)
         c.line(width/4, height-120, width*3/4, height-120)
-        
+
         y = height - 160
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
@@ -90,15 +91,15 @@ class ProfessionalPDFGenerator:
         y -= 25
         c.setFont(FONT_NAME, 12)
         c.setFillColor(TEXT_WHITE)
-        c.drawString(70, y, f"☉ Солнце в знаке: {chart_data['sun_sign']}")
+        c.drawString(70, y, f"☉ Солнце в знаке: {chart_data.get('sun_sign', 'Неизвестно')}")
         y -= 20
-        c.drawString(70, y, f"🌊 Стихия: {chart_data['element']}")
+        c.drawString(70, y, f"🌊 Стихия: {chart_data.get('element', 'Неизвестно')}")
         y -= 20
-        c.drawString(70, y, f"⚡ Качество: {chart_data['quality']}")
+        c.drawString(70, y, f"⚡ Качество: {chart_data.get('quality', 'Неизвестно')}")
         y -= 20
-        c.drawString(70, y, f"⬆ Асцендент (ASC): {chart_data['ascendant']}")
+        c.drawString(70, y, f"⬆ Асцендент (ASC): {chart_data.get('ascendant', 'Неизвестно')}")
         y -= 40
-        
+
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "ПОЛОЖЕНИЕ ПЛАНЕТ")
@@ -107,34 +108,34 @@ class ProfessionalPDFGenerator:
         c.setFillColor(TEXT_WHITE)
         left_x = 70
         right_x = 350
-        planets = chart_data['planets']
+        planets = chart_data.get('planets', [])
         half = len(planets) // 2 + len(planets) % 2
         for i, planet in enumerate(planets[:half]):
             retro = " (ретроградный)" if planet.get('retrograde') else ""
-            c.drawString(left_x, y, f"{planet['symbol']} {planet['name']}: {planet['sign']} ({planet['house']} дом){retro}")
+            c.drawString(left_x, y, f"{planet.get('symbol', '')} {planet.get('name', '')}: {planet.get('sign', '')} ({planet.get('house', '')} дом){retro}")
             y -= 18
         y_temp = height - 160 - 25 - 18 * half
         for i, planet in enumerate(planets[half:]):
             retro = " (ретроградный)" if planet.get('retrograde') else ""
-            c.drawString(right_x, y_temp, f"{planet['symbol']} {planet['name']}: {planet['sign']} ({planet['house']} дом){retro}")
+            c.drawString(right_x, y_temp, f"{planet.get('symbol', '')} {planet.get('name', '')}: {planet.get('sign', '')} ({planet.get('house', '')} дом){retro}")
             y_temp -= 18
         y = height - 160 - 25 - 18 * half - 40
-        
+
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "АСТРОЛОГИЧЕСКИЕ ДОМА")
         y -= 25
         c.setFont(FONT_NAME, 10)
         c.setFillColor(TEXT_WHITE)
-        houses = chart_data['houses']
+        houses = chart_data.get('houses', [])
         for i, house in enumerate(houses):
             col = i % 4
             row = i // 4
             x = 50 + col * 100
             y_pos = y - row * 18
-            c.drawString(x, y_pos, f"{house['number']} дом: {house['sign']}")
+            c.drawString(x, y_pos, f"{house.get('number', '')} дом: {house.get('sign', '')}")
         y = y - 8 * 18 - 40
-        
+
         interpretations = {
             'Овен': 'Вы обладаете лидерскими качествами, энергичны и инициативны.',
             'Телец': 'Вы практичны, терпеливы и надёжны.',
@@ -155,45 +156,45 @@ class ProfessionalPDFGenerator:
         y -= 25
         c.setFont(FONT_NAME, 11)
         c.setFillColor(TEXT_WHITE)
-        interp = interpretations.get(chart_data['sun_sign'], 'у вас уникальная личность.')
-        c.drawString(70, y, f"☉ Солнце в {chart_data['sun_sign']}: {interp}")
-        
+        interp = interpretations.get(chart_data.get('sun_sign', ''), 'у вас уникальная личность.')
+        c.drawString(70, y, f"☉ Солнце в {chart_data.get('sun_sign', 'Неизвестно')}: {interp}")
+
         c.setFont(FONT_NAME, 9)
         c.setFillColor(TEXT_LIGHT)
         c.drawCentredString(width/2, 40, "🔮 Астрология — это инструмент самопознания. Звёзды указывают путь, но выбор всегда за вами!")
         c.drawCentredString(width/2, 25, f"Сгенерировано AstroBot • {datetime.now().strftime('%d.%m.%Y %H:%M')}")
         c.save()
         return filename
-    
+
     def create_horoscope_pdf(self, data: dict) -> str:
         """Создаёт PDF гороскопа (для кнопки PDF гороскопа)"""
         filename = f"horoscope_{uuid.uuid4().hex}.pdf"
         c = canvas.Canvas(filename, pagesize=A4)
         width, height = A4
-        
+
         self._draw_background(c, width, height)
         self._draw_decorative_frame(c, width, height)
-        
+
         c.setFont(FONT_BOLD_NAME, 26)
         c.setFillColor(TEXT_GOLD)
-        c.drawCentredString(width/2, height-50, "🌙 ГОРОСКОП")
-        
+        c.drawCentredString(width/2, height-50, "✨ ГОРОСКОП ✨")
+
         c.setFont(FONT_BOLD_NAME, 16)
         c.setFillColor(TEXT_WHITE)
         c.drawCentredString(width/2, height-85, data.get('user_name', 'Пользователь'))
         c.setFont(FONT_NAME, 12)
         c.setFillColor(TEXT_LIGHT)
         c.drawCentredString(width/2, height-105, f"Дата: {data.get('date', datetime.now().strftime('%d.%m.%Y'))}")
-        
+
         c.setStrokeColor(TEXT_GOLD)
         c.setLineWidth(1.5)
         c.line(width/4, height-120, width*3/4, height-120)
-        
+
         y = height - 160
         c.setFont(FONT_NAME, 12)
         c.setFillColor(TEXT_WHITE)
         horoscope_text = data.get('horoscope', 'Сегодня звёзды благоволят вам.')
-        # Перенос текста
+        # Умный перенос текста по ширине страницы
         lines = []
         words = horoscope_text.split()
         line = ""
@@ -204,16 +205,16 @@ class ProfessionalPDFGenerator:
                 lines.append(line)
                 line = word + " "
         lines.append(line)
-        
+
         for line in lines:
-            c.drawString(50, y, line)
-            y -= 20
-            if y < 100:
+            if y < 100:  # если текст не помещается на странице, создаём новую
                 c.showPage()
                 self._draw_background(c, width, height)
                 self._draw_decorative_frame(c, width, height)
                 y = height - 50
-        
+            c.drawString(50, y, line)
+            y -= 20
+
         c.setFont(FONT_NAME, 9)
         c.setFillColor(TEXT_LIGHT)
         c.drawCentredString(width/2, 40, "🔮 Астрология — это инструмент самопознания. Звёзды указывают путь, но выбор всегда за вами!")
