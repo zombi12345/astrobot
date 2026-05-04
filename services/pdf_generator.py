@@ -171,9 +171,8 @@ class ProfessionalPDFGenerator:
         c.setFillColor(TEXT_WHITE)
         sun_sign = chart_data.get('sun_sign', 'Неизвестно')
         interp = interpretations.get(sun_sign, 'у вас уникальная личность.')
-        # Разбиваем интерпретацию, если длинная (но обычно одна строка)
+        # Разбиваем интерпретацию, если она длинная
         if c.stringWidth(interp, FONT_NAME, 11) > width - 100:
-            # Простой перенос по словам
             words = interp.split()
             line = ""
             y_line = y
@@ -197,6 +196,7 @@ class ProfessionalPDFGenerator:
         return filename
 
     def create_horoscope_pdf(self, data: dict) -> str:
+        """Создаёт PDF гороскопа (для кнопки PDF гороскопа)"""
         filename = f"horoscope_{uuid.uuid4().hex}.pdf"
         c = canvas.Canvas(filename, pagesize=A4)
         width, height = A4
@@ -223,7 +223,7 @@ class ProfessionalPDFGenerator:
         c.setFont(FONT_NAME, 12)
         c.setFillColor(TEXT_WHITE)
         horoscope_text = data.get('horoscope', 'Сегодня звёзды благоволят вам.')
-        # Умный перенос
+        # Умный перенос текста
         words = horoscope_text.split()
         line = ""
         for word in words:
