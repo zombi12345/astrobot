@@ -36,7 +36,6 @@ ACCENT_PURPLE = HexColor('#8B5CF6')
 
 class ProfessionalPDFGenerator:
     def _draw_background(self, c, width, height):
-        """Рисует фон (изображение или градиент)"""
         if os.path.exists(BACKGROUND_PATH):
             try:
                 img = ImageReader(BACKGROUND_PATH)
@@ -47,8 +46,7 @@ class ProfessionalPDFGenerator:
                 c.setFillAlpha(1.0)
                 return
             except Exception as e:
-                logger.warning(f"Не удалось загрузить фон: {e}")
-        # Если изображения нет, заливаем фон градиентным цветом
+                logger.warning(f"Фон не загружен: {e}")
         c.setFillColor(BG_DARK)
         c.rect(0, 0, width, height, fill=1)
 
@@ -85,6 +83,8 @@ class ProfessionalPDFGenerator:
         c.line(width/4, height-120, width*3/4, height-120)
 
         y = height - 160
+
+        # Основные характеристики
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "ОСНОВНЫЕ ХАРАКТЕРИСТИКИ")
@@ -100,27 +100,30 @@ class ProfessionalPDFGenerator:
         c.drawString(70, y, f"⬆ Асцендент (ASC): {chart_data.get('ascendant', 'Неизвестно')}")
         y -= 40
 
+        # Планеты (две колонки)
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "ПОЛОЖЕНИЕ ПЛАНЕТ")
         y -= 25
         c.setFont(FONT_NAME, 11)
         c.setFillColor(TEXT_WHITE)
+        planets = chart_data.get('planets', [])
         left_x = 70
         right_x = 350
-        planets = chart_data.get('planets', [])
-        half = len(planets) // 2 + len(planets) % 2
-        for i, planet in enumerate(planets[:half]):
-            retro = " (ретроградный)" if planet.get('retrograde') else ""
-            c.drawString(left_x, y, f"{planet.get('symbol', '')} {planet.get('name', '')}: {planet.get('sign', '')} ({planet.get('house', '')} дом){retro}")
+        half = (len(planets) + 1) // 2
+        for i, p in enumerate(planets[:half]):
+            retro = " (ретроградный)" if p.get('retrograde') else ""
+            c.drawString(left_x, y, f"{p.get('symbol', '')} {p.get('name', '')}: {p.get('sign', '')} ({p.get('house', '')} дом){retro}")
             y -= 18
-        y_temp = height - 160 - 25 - 18 * half
-        for i, planet in enumerate(planets[half:]):
-            retro = " (ретроградный)" if planet.get('retrograde') else ""
-            c.drawString(right_x, y_temp, f"{planet.get('symbol', '')} {planet.get('name', '')}: {planet.get('sign', '')} ({planet.get('house', '')} дом){retro}")
-            y_temp -= 18
+        y2 = height - 160 - 25 - 18 * half
+        for i, p in enumerate(planets[half:]):
+            retro = " (ретроградный)" if p.get('retrograde') else ""
+            c.drawString(right_x, y2, f"{p.get('symbol', '')} {p.get('name', '')}: {p.get('sign', '')} ({p.get('house', '')} дом){retro}")
+            y2 -= 18
+        # Переходим к следующему блоку после колонок
         y = height - 160 - 25 - 18 * half - 40
 
+        # Дома (4 колонки)
         c.setFont(FONT_BOLD_NAME, 14)
         c.setFillColor(TEXT_GOLD)
         c.drawString(50, y, "АСТРОЛОГИЧЕСКИЕ ДОМА")
@@ -128,14 +131,17 @@ class ProfessionalPDFGenerator:
         c.setFont(FONT_NAME, 10)
         c.setFillColor(TEXT_WHITE)
         houses = chart_data.get('houses', [])
+        col_width = 100
+        rows = (len(houses) + 3) // 4
         for i, house in enumerate(houses):
             col = i % 4
             row = i // 4
-            x = 50 + col * 100
+            x = 50 + col * col_width
             y_pos = y - row * 18
             c.drawString(x, y_pos, f"{house.get('number', '')} дом: {house.get('sign', '')}")
-        y = y - 8 * 18 - 40
+        y = y - rows * 18 - 40
 
+        # Интерпретация
         interpretations = {
             'Овен': 'Вы обладаете лидерскими качествами, энергичны и инициативны.',
             'Телец': 'Вы практичны, терпеливы и надёжны.',
@@ -156,9 +162,11 @@ class ProfessionalPDFGenerator:
         y -= 25
         c.setFont(FONT_NAME, 11)
         c.setFillColor(TEXT_WHITE)
-        interp = interpretations.get(chart_data.get('sun_sign', ''), 'у вас уникальная личность.')
-        c.drawString(70, y, f"☉ Солнце в {chart_data.get('sun_sign', 'Неизвестно')}: {interp}")
+        sun_sign = chart_data.get('sun_sign', 'Неизвестно')
+        interp = interpretations.get(sun_sign, 'у вас уникальная личность.')
+        c.drawString(70, y, f"☉ Солнце в {sun_sign}: {interp}")
 
+        # Нижний колонтитул
         c.setFont(FONT_NAME, 9)
         c.setFillColor(TEXT_LIGHT)
         c.drawCentredString(width/2, 40, "🔮 Астрология — это инструмент самопознания. Звёзды указывают путь, но выбор всегда за вами!")
@@ -194,7 +202,7 @@ class ProfessionalPDFGenerator:
         c.setFont(FONT_NAME, 12)
         c.setFillColor(TEXT_WHITE)
         horoscope_text = data.get('horoscope', 'Сегодня звёзды благоволят вам.')
-        # Умный перенос текста по ширине страницы
+        # Умный перенос
         lines = []
         words = horoscope_text.split()
         line = ""
@@ -207,7 +215,7 @@ class ProfessionalPDFGenerator:
         lines.append(line)
 
         for line in lines:
-            if y < 100:  # если текст не помещается на странице, создаём новую
+            if y < 100:
                 c.showPage()
                 self._draw_background(c, width, height)
                 self._draw_decorative_frame(c, width, height)
