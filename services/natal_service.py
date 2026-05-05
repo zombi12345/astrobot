@@ -138,15 +138,17 @@ class NatalService:
                     'house': str(data['house']), 'retrograde': data['retrograde'],
                 })
             else:
+                # fallback
                 planets_data.append({
                     'name': rus_name, 'symbol': symbol, 'sign': "Неизвестно",
                     'house': "?", 'retrograde': False,
                 })
         
-        # Исправление знака Солнца по локальному алгоритму
+        # *** ИСПРАВЛЕНИЕ ЗНАКА СОЛНЦА (тропический зодиак) ***
         birth_date_obj = datetime(year, month, day)
         local_sun_sign = AstrologyCalculator.get_zodiac_sign(birth_date_obj)
         if planets_data and planets_data[0]['sign'] != local_sun_sign:
+            logger.info(f"Знак Солнца исправлен: {planets_data[0]['sign']} -> {local_sun_sign}")
             planets_data[0]['sign'] = local_sun_sign
         
         sun_sign = planets_data[0]['sign']
@@ -176,99 +178,76 @@ class NatalService:
         }
     
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        """Красивая SVG-схема натальной карты (исправленная версия)"""
+        """Красивая SVG-схема натальной карты (без синтаксических ошибок)"""
         try:
             filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data['birth_info']
             asc = chart_data['ascendant']
             sun_sign = chart_data['sun_sign']
             planets = chart_data['planets']
-            houses = chart_data['houses']
             
             signs_ru = ['Овен','Телец','Близнецы','Рак','Лев','Дева','Весы','Скорпион','Стрелец','Козерог','Водолей','Рыбы']
             signs_sym = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓']
             
-            # Позиции планет
+            # Позиции планет (упрощённо)
             planet_positions = []
             for p in planets:
                 try:
                     sign_idx = signs_ru.index(p['sign'])
                 except:
                     sign_idx = 0
-                angle = (sign_idx * 30 + int(p['house']) * 5) % 360 if p['house'].isdigit() else sign_idx * 30
+                angle = (sign_idx * 30) % 360
                 rad = math.radians(angle - 90)
                 radius = 240
                 x = 400 + radius * math.cos(rad)
                 y = 400 + radius * math.sin(rad)
-                planet_positions.append((x, y, p['symbol'], p['name']))
+                planet_positions.append((x, y, p['symbol']))
             
-            # Построение SVG
             svg = []
             svg.append('<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">')
-            svg.append('<defs>')
-            svg.append('<radialGradient id="bgGrad" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1F2937"/><stop offset="100%" stop-color="#0D1117"/></radialGradient>')
-            svg.append('<filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
-            svg.append('</defs>')
+            svg.append('<defs><radialGradient id="bgGrad" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1F2937"/><stop offset="100%" stop-color="#0D1117"/></radialGradient></defs>')
             svg.append('<rect width="800" height="800" fill="url(#bgGrad)"/>')
-            
-            # Звёзды
+            # Звёздный фон
             random.seed(hash(info['name']))
-            for _ in range(80):
+            for _ in range(60):
                 x = random.randint(20, 780)
                 y = random.randint(20, 780)
-                svg.append(f'<circle cx="{x}" cy="{y}" r="1.5" fill="#FFFFFF" opacity="0.4"/>')
+                svg.append(f'<circle cx="{x}" cy="{y}" r="1.5" fill="#FFFFFF" opacity="0.3"/>')
             random.seed()
-            
             # Круги
-            for r, sw in [(350,3), (280,2), (200,1.5), (100,1)]:
+            for r, sw in [(350,3),(280,2),(200,1.5),(100,1)]:
                 svg.append(f'<circle cx="400" cy="400" r="{r}" fill="none" stroke="#8B5CF6" stroke-width="{sw}" opacity="0.8"/>')
-            
-            # Линии домов
-            for angle in range(0, 360, 30):
-                rad = math.radians(angle - 90)
+            # Линии
+            for angle in range(0,360,30):
+                rad = math.radians(angle-90)
                 x2 = 400 + 350 * math.cos(rad)
                 y2 = 400 + 350 * math.sin(rad)
                 svg.append(f'<line x1="400" y1="400" x2="{x2}" y2="{y2}" stroke="#8B5CF6" stroke-width="1" opacity="0.3"/>')
-            
             # Знаки зодиака
-            for i, sym in enumerate(signs_sym):
-                angle = (i * 30) - 90
+            for i,sym in enumerate(signs_sym):
+                angle = i*30 - 90
                 rad = math.radians(angle)
                 r = 310
                 x = 400 + r * math.cos(rad)
                 y = 400 + r * math.sin(rad) + 8
-                svg.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#F59E0B" font-size="24" font-family="Arial, sans-serif">{sym}</text>')
-            
+                svg.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#F59E0B" font-size="24">{sym}</text>')
             # Номера домов
-            for i in range(1, 13):
-                angle = (i * 30) - 90 + 15
+            for i in range(1,13):
+                angle = i*30 - 90 + 15
                 rad = math.radians(angle)
                 r = 370
                 x = 400 + r * math.cos(rad)
                 y = 400 + r * math.sin(rad) + 5
                 svg.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#E5E7EB" font-size="14" font-weight="bold">{i}</text>')
-            
             # Планеты
-            for x, y, sym, name in planet_positions:
-                svg.append(f'<circle cx="{x}" cy="{y}" r="18" fill="#0D1117" stroke="#FBBF24" stroke-width="2" filter="url(#glow)"/>')
-                svg.append(f'<text x="{x}" y="{y+6}" text-anchor="middle" fill="#FBBF24" font-size="20" font-family="Arial, sans-serif">{sym}</text>')
-                svg.append(f'<text x="{x}" y="{y-14}" text-anchor="middle" fill="#E5E7EB" font-size="9">{name[0]}</text>')
-            
+            for x,y,sym in planet_positions:
+                svg.append(f'<circle cx="{x}" cy="{y}" r="18" fill="#0D1117" stroke="#FBBF24" stroke-width="2"/>')
+                svg.append(f'<text x="{x}" y="{y+6}" text-anchor="middle" fill="#FBBF24" font-size="20">{sym}</text>')
             # Заголовки
-            svg.append(f'<text x="400" y="45" text-anchor="middle" fill="#F59E0B" font-size="24" font-weight="bold" font-family="Georgia, serif">✨ Натальная карта ✨</text>')
-            svg.append(f'<text x="400" y="75" text-anchor="middle" fill="#E5E7EB" font-size="16" font-family="Arial, sans-serif">{info["name"]}</text>')
-            svg.append(f'<text x="400" y="100" text-anchor="middle" fill="#8B5CF6" font-size="12" font-family="Arial, sans-serif">{info["date"]} {info["time"]} | {info["place"]}</text>')
-            svg.append(f'<text x="400" y="760" text-anchor="middle" fill="#F59E0B" font-size="14" font-family="Arial, sans-serif">⬆ ASC {asc}</text>')
-            
-            # Легенда
-            svg.append('<g transform="translate(620, 580)">')
-            svg.append('<rect x="0" y="0" width="150" height="150" rx="8" fill="#1F2937" opacity="0.9" stroke="#8B5CF6" stroke-width="1"/>')
-            svg.append('<text x="75" y="20" text-anchor="middle" fill="#F59E0B" font-size="12" font-weight="bold">Солнце</text>')
-            svg.append(f'<text x="75" y="45" text-anchor="middle" fill="#E5E7EB" font-size="11">{sun_sign}</text>')
-            svg.append('<text x="75" y="70" text-anchor="middle" fill="#F59E0B" font-size="12" font-weight="bold">Асцендент</text>')
-            svg.append(f'<text x="75" y="95" text-anchor="middle" fill="#E5E7EB" font-size="11">{asc}</text>')
-            svg.append('</g>')
-            
+            svg.append(f'<text x="400" y="45" text-anchor="middle" fill="#F59E0B" font-size="24" font-weight="bold">✨ Натальная карта ✨</text>')
+            svg.append(f'<text x="400" y="75" text-anchor="middle" fill="#E5E7EB" font-size="16">{info["name"]}</text>')
+            svg.append(f'<text x="400" y="100" text-anchor="middle" fill="#8B5CF6" font-size="12">{info["date"]} {info["time"]} | {info["place"]}</text>')
+            svg.append(f'<text x="400" y="760" text-anchor="middle" fill="#F59E0B" font-size="14">⬆ ASC {asc}</text>')
             svg.append('</svg>')
             
             with open(filename, 'w', encoding='utf-8') as f:
