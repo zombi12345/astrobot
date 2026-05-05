@@ -11,14 +11,14 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
-router = Router()
+router = Router()   # <--- ЭТО ВАЖНО
 
 # Кэш последней созданной карты
 last_chart_cache = {}
 
 @router.callback_query(F.data == "natal_chart")
 async def natal_chart_menu(callback: CallbackQuery):
-    text = md2_escape("🔮 **Создание натальной карты**\n\nНатальная карта — это астрологическая карта рождения, которая показывает положение планет в момент вашего рождения.")
+    text = md2_escape("🔮 **Создание натальной карты**\n\nНатальная карта — это астрологическая карта рождения.")
     await callback.message.edit_text(text, reply_markup=natal_options_keyboard(), parse_mode="MarkdownV2")
 
 @router.callback_query(F.data == "natal_input")
@@ -65,13 +65,13 @@ async def natal_finish(message: Message, state: FSMContext):
     if not valid:
         await message.answer(f"❌ {error}\nПопробуйте снова")
         return
-
+    
     data = await state.get_data()
     data['birth_place'] = cleaned
     await state.clear()
-
+    
     processing_msg = await message.answer("🔮 **Создаю натальную карту...**\nЭто может занять до 30 секунд", parse_mode="Markdown")
-
+    
     try:
         chart_data = await natal_service.create_natal_chart(
             data['name'], data['birth_date'], data['birth_time'], data['birth_place']
@@ -80,28 +80,29 @@ async def natal_finish(message: Message, state: FSMContext):
         last_chart_cache[user_id] = chart_data
         await UserDB.update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
         await processing_msg.delete()
-
-        # Отправка SVG
+        
+        # Отправка SVG-изображения
         svg_path = natal_service.generate_svg_chart(chart_data)
         if svg_path and os.path.exists(svg_path):
             svg_file = FSInputFile(svg_path)
             await message.answer_document(svg_file, caption="🔮 **Схема натальной карты**")
             os.remove(svg_path)
-
-        # Отправка текстового отчёта
+        else:
+            await message.answer("⚠️ Не удалось создать изображение карты, но текстовый отчёт готов.")
+        
+        # Текстовый отчёт
         report_text = natal_service.generate_report_text(chart_data)
         if len(report_text) > 4000:
             for i in range(0, len(report_text), 4000):
                 await message.answer(report_text[i:i+4000], parse_mode="Markdown")
         else:
             await message.answer(report_text, parse_mode="Markdown")
-
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📄 Скачать PDF-отчёт", callback_data="pdf_natal_from_chart")],
             [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
         ])
         await message.answer("✨ **Натальная карта готова!**", reply_markup=keyboard, parse_mode="Markdown")
-
     except Exception as e:
         logger.error(f"Ошибка создания карты: {e}")
         await processing_msg.edit_text(f"❌ **Ошибка:** {str(e)}", parse_mode="Markdown")
@@ -126,7 +127,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
         except Exception as e:
             await callback.message.edit_text(f"❌ Ошибка при создании карты: {e}", reply_markup=back_to_menu_keyboard())
             return
-
+    
     processing_msg = await callback.message.edit_text("📄 **Создаю PDF...**", parse_mode="Markdown")
     try:
         pdf_path = pdf_gen.create_natal_chart_pdf(chart_data)
