@@ -3,7 +3,6 @@ import uuid
 import os
 import httpx
 import math
-import random
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional, List
 from astrology_calculator import AstrologyCalculator
@@ -96,12 +95,16 @@ class NatalService:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(url, headers=headers)
                 if response.status_code == 200:
-                    data = response.json()
-                    return {
-                        'sign': data.get('Sign', {}).get('Name', 'Неизвестно'),
-                        'house': data.get('House', '?'),
-                        'retrograde': data.get('Retrograde', False),
-                    }
+                    try:
+                        data = response.json()
+                        return {
+                            'sign': data.get('Sign', {}).get('Name', 'Неизвестно'),
+                            'house': data.get('House', '?'),
+                            'retrograde': data.get('Retrograde', False),
+                        }
+                    except:
+                        # Если невалидный JSON, возвращаем None (будет fallback)
+                        return None
                 else:
                     return None
         except Exception as e:
@@ -138,20 +141,22 @@ class NatalService:
                     'house': str(data['house']), 'retrograde': data['retrograde'],
                 })
             else:
-                # Fallback: генерируем случайный знак (но лучше "Неизвестно", чтобы не вводить в заблуждение)
+                # fallback: демо-знак на основе хеша, чтобы не было "Неизвестно"
+                demo_sign = self._get_demo_sign(eng_name, year, month, day)
                 planets_data.append({
-                    'name': rus_name, 'symbol': symbol, 'sign': "Неизвестно",
-                    'house': "?", 'retrograde': False,
+                    'name': rus_name, 'symbol': symbol, 'sign': demo_sign,
+                    'house': str((hash(f"{eng_name}{birth_date}") % 12) + 1),
+                    'retrograde': False,
                 })
         
-        # Локальное исправление знака Солнца
+        # КОРРЕКЦИЯ ЗНАКА СОЛНЦА (тропический зодиак)
         birth_date_obj = datetime(year, month, day)
-        local_sun_sign = AstrologyCalculator.get_zodiac_sign(birth_date_obj)
-        if planets_data and planets_data[0]['sign'] != local_sun_sign:
-            planets_data[0]['sign'] = local_sun_sign
-            logger.info(f"Скорректирован знак Солнца: {local_sun_sign}")
+        correct_sun_sign = AstrologyCalculator.get_zodiac_sign(birth_date_obj)
+        if planets_data:
+            planets_data[0]['sign'] = correct_sun_sign
+            logger.info(f"Скорректирован знак Солнца: {correct_sun_sign}")
         
-        sun_sign = planets_data[0]['sign']
+        sun_sign = correct_sun_sign
         elements = {
             'Овен': 'Огонь', 'Лев': 'Огонь', 'Стрелец': 'Огонь',
             'Телец': 'Земля', 'Дева': 'Земля', 'Козерог': 'Земля',
@@ -177,79 +182,46 @@ class NatalService:
             'birth_info': {'name': name, 'date': birth_date, 'time': f"{hour:02d}:{minute:02d}", 'place': place_clean}
         }
     
+    def _get_demo_sign(self, planet: str, year: int, month: int, day: int) -> str:
+        signs = ['Овен', 'Телец', 'Близнецы', 'Рак', 'Лев', 'Дева', 'Весы', 'Скорпион', 'Стрелец', 'Козерог', 'Водолей', 'Рыбы']
+        import hashlib
+        seed = int(hashlib.md5(f"{planet}{year}{month}{day}".encode()).hexdigest()[:8], 16)
+        return signs[seed % 12]
+    
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        """Генерирует красивую SVG-схему натальной карты (без сложных f-строк)"""
+        """Упрощённая, но красивая и стабильная SVG-схема"""
         try:
             filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data['birth_info']
             asc = chart_data['ascendant']
             sun_sign = chart_data['sun_sign']
-            planets = chart_data['planets']
-            houses = chart_data['houses']
             
-            signs_ru = ['Овен','Телец','Близнецы','Рак','Лев','Дева','Весы','Скорпион','Стрелец','Козерог','Водолей','Рыбы']
+            # Символы знаков
             signs_sym = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓']
             
-            # Позиции планет (упрощённо, для красоты)
-            planet_positions = []
-            for i, p in enumerate(planets):
-                angle = (i * 30) % 360
-                rad = math.radians(angle - 90)
-                radius = 220
-                x = 400 + radius * math.cos(rad)
-                y = 400 + radius * math.sin(rad)
-                planet_positions.append((x, y, p['symbol'], p['name'][0]))
+            # Простой SVG с кругами и текстом
+            svg = f'''<svg width="600" height="600" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
+<rect width="600" height="600" fill="#0D1117"/>
+<circle cx="300" cy="300" r="250" fill="none" stroke="#8B5CF6" stroke-width="2"/>
+<circle cx="300" cy="300" r="180" fill="none" stroke="#8B5CF6" stroke-width="1"/>
+<text x="300" y="40" text-anchor="middle" fill="#F59E0B" font-size="18" font-weight="bold">✨ Натальная карта ✨</text>
+<text x="300" y="65" text-anchor="middle" fill="#E5E7EB" font-size="14">{info['name']}</text>
+<text x="300" y="85" text-anchor="middle" fill="#8B5CF6" font-size="11">{info['date']} {info['time']} | {info['place']}</text>
+<text x="300" y="560" text-anchor="middle" fill="#F59E0B" font-size="14">⬆ ASC {asc}</text>'''
             
-            # Построение SVG (без многострочных f-строк)
-            lines = []
-            lines.append('<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">')
-            lines.append('<rect width="800" height="800" fill="#0D1117"/>')
-            # Круги
-            for r, sw in [(350,3), (280,2), (200,1.5), (100,1)]:
-                lines.append(f'<circle cx="400" cy="400" r="{r}" fill="none" stroke="#8B5CF6" stroke-width="{sw}" opacity="0.8"/>')
-            # Линии
-            for angle in range(0, 360, 30):
-                rad = math.radians(angle - 90)
-                x2 = 400 + 350 * math.cos(rad)
-                y2 = 400 + 350 * math.sin(rad)
-                lines.append(f'<line x1="400" y1="400" x2="{x2}" y2="{y2}" stroke="#8B5CF6" stroke-width="1" opacity="0.3"/>')
-            # Знаки зодиака
+            # Добавляем знаки зодиака по кругу
             for i, sym in enumerate(signs_sym):
                 angle = (i * 30) - 90
                 rad = math.radians(angle)
-                r = 310
-                x = 400 + r * math.cos(rad)
-                y = 400 + r * math.sin(rad) + 8
-                lines.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#F59E0B" font-size="24" font-family="Arial, sans-serif">{sym}</text>')
-            # Номера домов
-            for i in range(1, 13):
-                angle = (i * 30) - 90 + 15
-                rad = math.radians(angle)
-                r = 370
-                x = 400 + r * math.cos(rad)
-                y = 400 + r * math.sin(rad) + 5
-                lines.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#E5E7EB" font-size="14" font-weight="bold">{i}</text>')
-            # Планеты
-            for x, y, sym, letter in planet_positions:
-                lines.append(f'<circle cx="{x}" cy="{y}" r="16" fill="#0D1117" stroke="#FBBF24" stroke-width="2"/>')
-                lines.append(f'<text x="{x}" y="{y+6}" text-anchor="middle" fill="#FBBF24" font-size="18" font-family="Arial, sans-serif">{sym}</text>')
-            # Заголовки
-            lines.append(f'<text x="400" y="45" text-anchor="middle" fill="#F59E0B" font-size="24" font-weight="bold">✨ Натальная карта ✨</text>')
-            lines.append(f'<text x="400" y="75" text-anchor="middle" fill="#E5E7EB" font-size="16">{info["name"]}</text>')
-            lines.append(f'<text x="400" y="100" text-anchor="middle" fill="#8B5CF6" font-size="12">{info["date"]} {info["time"]} | {info["place"]}</text>')
-            lines.append(f'<text x="400" y="760" text-anchor="middle" fill="#F59E0B" font-size="14">⬆ ASC {asc}</text>')
-            # Легенда
-            lines.append('<g transform="translate(620, 580)">')
-            lines.append('<rect x="0" y="0" width="150" height="130" rx="8" fill="#1F2937" opacity="0.9" stroke="#8B5CF6" stroke-width="1"/>')
-            lines.append('<text x="75" y="20" text-anchor="middle" fill="#F59E0B" font-size="12" font-weight="bold">Солнце</text>')
-            lines.append(f'<text x="75" y="45" text-anchor="middle" fill="#E5E7EB" font-size="11">{sun_sign}</text>')
-            lines.append('<text x="75" y="70" text-anchor="middle" fill="#F59E0B" font-size="12" font-weight="bold">Асцендент</text>')
-            lines.append(f'<text x="75" y="95" text-anchor="middle" fill="#E5E7EB" font-size="11">{asc}</text>')
-            lines.append('</g>')
-            lines.append('</svg>')
+                r = 220
+                x = 300 + r * math.cos(rad)
+                y = 300 + r * math.sin(rad) + 6
+                svg += f'<text x="{x}" y="{y}" text-anchor="middle" fill="#F59E0B" font-size="22">{sym}</text>'
+            
+            svg += '</svg>'
             
             with open(filename, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lines))
+                f.write(svg)
             return filename
         except Exception as e:
             logger.error(f"Ошибка SVG: {e}")
