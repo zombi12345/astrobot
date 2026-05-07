@@ -11,7 +11,7 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
-router = Router()  # <--- ЭТО БЫЛО ПРОПУЩЕНО, ИЗ-ЗА ЭТОГО ОШИБКА
+router = Router()
 
 last_chart_cache = {}
 
@@ -80,14 +80,14 @@ async def natal_finish(message: Message, state: FSMContext):
         await UserDB.update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
         await processing_msg.delete()
         
-        # SVG карта (простая, но стабильная)
-        svg_path = natal_service.generate_svg_chart(chart_data)
-        if svg_path and os.path.exists(svg_path):
-            photo_file = FSInputFile(svg_path)
+        # Генерируем PNG/изображение
+        image_path = natal_service.generate_svg_chart(chart_data)  # возвращает путь к PNG или SVG
+        if image_path and os.path.exists(image_path):
+            photo_file = FSInputFile(image_path)
             await message.answer_photo(photo_file, caption="🔮 **Схема натальной карты**")
-            os.remove(svg_path)
+            os.remove(image_path)
         
-        # Текстовый отчёт
+        # Отправляем текстовый отчёт
         report_text = natal_service.generate_report_text(chart_data)
         if len(report_text) > 4000:
             for i in range(0, len(report_text), 4000):
