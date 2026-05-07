@@ -83,8 +83,8 @@ async def natal_finish(message: Message, state: FSMContext):
         # SVG карта (простая, но стабильная)
         svg_path = natal_service.generate_svg_chart(chart_data)
         if svg_path and os.path.exists(svg_path):
-            svg_file = FSInputFile(svg_path)
-            await message.answer_document(svg_file, caption="🔮 **Схема натальной карты**")
+            photo_file = FSInputFile(svg_path)
+            await message.answer_photo(photo_file, caption="🔮 **Схема натальной карты**")
             os.remove(svg_path)
         
         # Текстовый отчёт
