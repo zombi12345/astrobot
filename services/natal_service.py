@@ -188,11 +188,10 @@ class NatalService:
         return signs[seed % 12]
     
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        """Генерирует PNG-изображение натальной карты (конвертирует SVG в PNG)"""
+        """Генерирует PNG-изображение натальной карты (конвертирует SVG в PNG) с правильными шрифтами"""
         svg_filename = None
         png_filename = None
         try:
-            # 1. Создаём SVG как временный файл
             svg_filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data['birth_info']
             asc = chart_data['ascendant']
@@ -223,6 +222,7 @@ class NatalService:
             svg_parts.append('<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">')
             svg_parts.append('<rect width="800" height="800" fill="#1a2a3a"/>')
             
+            # Звёзды
             random.seed(hash(info['name']))
             for _ in range(80):
                 x = random.randint(20, 780)
@@ -230,6 +230,7 @@ class NatalService:
                 svg_parts.append(f'<circle cx="{x}" cy="{y}" r="1" fill="#FFFFFF" opacity="0.5"/>')
             random.seed()
             
+            # Круги и линии
             svg_parts.append('<circle cx="400" cy="400" r="350" fill="none" stroke="#c9a959" stroke-width="2"/>')
             svg_parts.append('<circle cx="400" cy="400" r="280" fill="none" stroke="#c9a959" stroke-width="1.5"/>')
             svg_parts.append('<circle cx="400" cy="400" r="200" fill="none" stroke="#c9a959" stroke-width="1"/>')
@@ -241,22 +242,25 @@ class NatalService:
                 y2 = 400 + 350 * math.sin(rad)
                 svg_parts.append(f'<line x1="400" y1="400" x2="{x2}" y2="{y2}" stroke="#c9a959" stroke-width="1" opacity="0.4"/>')
             
+            # Знаки зодиака (символы) – с правильным шрифтом
             for i, sym in enumerate(signs_sym):
                 angle = (i * 30) - 90
                 rad = math.radians(angle)
                 r = 320
                 x = 400 + r * math.cos(rad)
                 y = 400 + r * math.sin(rad) + 10
-                svg_parts.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#FFD700" font-size="26" font-family="Arial, sans-serif">{sym}</text>')
+                svg_parts.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#FFD700" font-size="26" font-family="DejaVu Sans, Arial, sans-serif">{sym}</text>')
             
+            # Номера домов
             for i in range(1, 13):
                 angle = (i * 30) - 90 + 15
                 rad = math.radians(angle)
                 r = 370
                 x = 400 + r * math.cos(rad)
                 y = 400 + r * math.sin(rad) + 5
-                svg_parts.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#E0E0E0" font-size="14" font-weight="bold">{i}</text>')
+                svg_parts.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#E0E0E0" font-size="14" font-weight="bold" font-family="DejaVu Sans, Arial, sans-serif">{i}</text>')
             
+            # Планеты (символы) – шрифт
             for angle, sym, name in planet_angles:
                 rad = math.radians(angle)
                 r = 240
@@ -264,9 +268,10 @@ class NatalService:
                 y = 400 + r * math.sin(rad)
                 color = planet_colors.get(sym, "#FFFFFF")
                 svg_parts.append(f'<circle cx="{x}" cy="{y}" r="18" fill="#1a2a3a" stroke="{color}" stroke-width="2"/>')
-                svg_parts.append(f'<text x="{x}" y="{y+6}" text-anchor="middle" fill="{color}" font-size="20" font-family="Arial, sans-serif">{sym}</text>')
-                svg_parts.append(f'<text x="{x}" y="{y-14}" text-anchor="middle" fill="#E0E0E0" font-size="10" font-family="Arial, sans-serif">{name[0]}</text>')
+                svg_parts.append(f'<text x="{x}" y="{y+6}" text-anchor="middle" fill="{color}" font-size="20" font-family="DejaVu Sans, Arial, sans-serif">{sym}</text>')
+                svg_parts.append(f'<text x="{x}" y="{y-14}" text-anchor="middle" fill="#E0E0E0" font-size="10" font-family="DejaVu Sans, Arial, sans-serif">{name[0]}</text>')
             
+            # Асцендент
             try:
                 asc_angle = signs_ru.index(asc) * 30 - 90
                 rad_asc = math.radians(asc_angle)
@@ -274,21 +279,22 @@ class NatalService:
                 x_asc = 400 + r_asc * math.cos(rad_asc)
                 y_asc = 400 + r_asc * math.sin(rad_asc)
                 svg_parts.append(f'<circle cx="{x_asc}" cy="{y_asc}" r="14" fill="#FFD700" stroke="#FFFFFF" stroke-width="2"/>')
-                svg_parts.append(f'<text x="{x_asc}" y="{y_asc+5}" text-anchor="middle" fill="#1a2a3a" font-size="12" font-weight="bold">ASC</text>')
+                svg_parts.append(f'<text x="{x_asc}" y="{y_asc+5}" text-anchor="middle" fill="#1a2a3a" font-size="12" font-weight="bold" font-family="DejaVu Sans, Arial, sans-serif">ASC</text>')
             except:
                 pass
             
+            # Текстовая информация
             svg_parts.append(f'<text x="400" y="45" text-anchor="middle" fill="#FFD700" font-size="24" font-weight="bold" font-family="Georgia, serif">✨ Натальная карта ✨</text>')
-            svg_parts.append(f'<text x="400" y="75" text-anchor="middle" fill="#FFFFFF" font-size="16" font-family="Arial, sans-serif">{info["name"]}</text>')
-            svg_parts.append(f'<text x="400" y="100" text-anchor="middle" fill="#c9a959" font-size="12" font-family="Arial, sans-serif">{info["date"]} {info["time"]} | {info["place"]}</text>')
-            svg_parts.append(f'<text x="400" y="760" text-anchor="middle" fill="#FFD700" font-size="14" font-family="Arial, sans-serif">⬆ Асцендент: {asc}</text>')
-            svg_parts.append('</svg>')
+            svg_parts.append(f'<text x="400" y="75" text-anchor="middle" fill="#FFFFFF" font-size="16" font-family="DejaVu Sans, Arial, sans-serif">{info["name"]}</text>')
+            svg_parts.append(f'<text x="400" y="100" text-anchor="middle" fill="#c9a959" font-size="12" font-family="DejaVu Sans, Arial, sans-serif">{info["date"]} {info["time"]} | {info["place"]}</text>')
+            svg_parts.append(f'<text x="400" y="760" text-anchor="middle" fill="#FFD700" font-size="14" font-family="DejaVu Sans, Arial, sans-serif">⬆ Асцендент: {asc}</text>')
             
+            svg_parts.append('</svg>')
             svg_content = "".join(svg_parts)
             with open(svg_filename, 'w', encoding='utf-8') as f:
                 f.write(svg_content)
             
-            # 2. Конвертируем SVG в PNG с помощью cairosvg
+            # Конвертация в PNG
             png_filename = svg_filename.replace('.svg', '.png')
             try:
                 import cairosvg
@@ -296,7 +302,7 @@ class NatalService:
                 os.remove(svg_filename)
                 return png_filename
             except ImportError:
-                logger.warning("cairosvg не установлен, отправляем SVG (может не открыться на телефоне)")
+                logger.warning("cairosvg не установлен, отправляем SVG")
                 return svg_filename
             except Exception as e:
                 logger.error(f"Ошибка конвертации SVG в PNG: {e}")
