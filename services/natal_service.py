@@ -188,128 +188,126 @@ class NatalService:
         return signs[seed % 12]
     
     def generate_svg_chart(self, chart_data: Dict[str, Any]) -> Optional[str]:
-        """Красивая, детализированная SVG-схема натальной карты"""
+        """Генерирует PNG-изображение натальной карты (конвертирует SVG в PNG)"""
+        svg_filename = None
+        png_filename = None
         try:
-            filename = f"natal_chart_{uuid.uuid4().hex}.svg"
+            # 1. Создаём SVG как временный файл
+            svg_filename = f"natal_chart_{uuid.uuid4().hex}.svg"
             info = chart_data['birth_info']
             asc = chart_data['ascendant']
             sun_sign = chart_data['sun_sign']
             planets = chart_data['planets']
-            houses = chart_data['houses']
             
             signs_ru = ['Овен','Телец','Близнецы','Рак','Лев','Дева','Весы','Скорпион','Стрелец','Козерог','Водолей','Рыбы']
             signs_sym = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓']
             
-            # Цвета планет
             planet_colors = {
                 "☉": "#FBBF24", "☽": "#E5E7EB", "☿": "#34D399", "♀": "#F472B6",
                 "♂": "#EF4444", "♃": "#60A5FA", "♄": "#A78BFA", "⛢": "#2DD4BF",
                 "♆": "#3B82F6", "♇": "#EC4899"
             }
             
-            # Определяем угол для каждой планеты (на основе знака и порядка в списке)
             planet_angles = []
             for idx, p in enumerate(planets):
                 try:
                     sign_idx = signs_ru.index(p['sign'])
                 except:
                     sign_idx = 0
-                # Базовый угол знака + небольшой сдвиг для различия планет в одном знаке
                 base_angle = sign_idx * 30
-                offset = (idx * 6) % 30  # от 0 до 24 градусов
+                offset = (idx * 6) % 30
                 angle = base_angle + offset - 90
                 planet_angles.append((angle, p['symbol'], p['name']))
             
-            # Построение SVG с помощью конкатенации (без многострочных f-строк)
             svg_parts = []
-            
             svg_parts.append('<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">')
-            svg_parts.append('<defs>')
-            svg_parts.append('<radialGradient id="bgGrad" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#1F2937"/><stop offset="100%" stop-color="#0D1117"/></radialGradient>')
-            svg_parts.append('<filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>')
-            svg_parts.append('</defs>')
-            svg_parts.append('<rect width="800" height="800" fill="url(#bgGrad)"/>')
+            svg_parts.append('<rect width="800" height="800" fill="#1a2a3a"/>')
             
-            # Звёзды
             random.seed(hash(info['name']))
-            for _ in range(120):
+            for _ in range(80):
                 x = random.randint(20, 780)
                 y = random.randint(20, 780)
-                svg_parts.append(f'<circle cx="{x}" cy="{y}" r="1.2" fill="#FFFFFF" opacity="0.4"/>')
+                svg_parts.append(f'<circle cx="{x}" cy="{y}" r="1" fill="#FFFFFF" opacity="0.5"/>')
             random.seed()
             
-            # Круги карты
-            for r, sw in [(350,3), (280,2), (200,1.5), (100,1)]:
-                svg_parts.append(f'<circle cx="400" cy="400" r="{r}" fill="none" stroke="#8B5CF6" stroke-width="{sw}" opacity="0.8"/>')
+            svg_parts.append('<circle cx="400" cy="400" r="350" fill="none" stroke="#c9a959" stroke-width="2"/>')
+            svg_parts.append('<circle cx="400" cy="400" r="280" fill="none" stroke="#c9a959" stroke-width="1.5"/>')
+            svg_parts.append('<circle cx="400" cy="400" r="200" fill="none" stroke="#c9a959" stroke-width="1"/>')
+            svg_parts.append('<circle cx="400" cy="400" r="100" fill="none" stroke="#c9a959" stroke-width="0.5"/>')
             
-            # Линии домов (32° каждые 30°)
             for angle in range(0, 360, 30):
                 rad = math.radians(angle - 90)
                 x2 = 400 + 350 * math.cos(rad)
                 y2 = 400 + 350 * math.sin(rad)
-                svg_parts.append(f'<line x1="400" y1="400" x2="{x2}" y2="{y2}" stroke="#8B5CF6" stroke-width="1" opacity="0.3"/>')
+                svg_parts.append(f'<line x1="400" y1="400" x2="{x2}" y2="{y2}" stroke="#c9a959" stroke-width="1" opacity="0.4"/>')
             
-            # Знаки зодиака на внешнем круге
             for i, sym in enumerate(signs_sym):
                 angle = (i * 30) - 90
                 rad = math.radians(angle)
                 r = 320
                 x = 400 + r * math.cos(rad)
                 y = 400 + r * math.sin(rad) + 10
-                svg_parts.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#F59E0B" font-size="26" font-family="Arial, sans-serif">{sym}</text>')
+                svg_parts.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#FFD700" font-size="26" font-family="Arial, sans-serif">{sym}</text>')
             
-            # Номера домов (между знаками)
             for i in range(1, 13):
                 angle = (i * 30) - 90 + 15
                 rad = math.radians(angle)
                 r = 370
                 x = 400 + r * math.cos(rad)
                 y = 400 + r * math.sin(rad) + 5
-                svg_parts.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#E5E7EB" font-size="14" font-weight="bold">{i}</text>')
+                svg_parts.append(f'<text x="{x}" y="{y}" text-anchor="middle" fill="#E0E0E0" font-size="14" font-weight="bold">{i}</text>')
             
-            # Планеты
             for angle, sym, name in planet_angles:
                 rad = math.radians(angle)
                 r = 240
                 x = 400 + r * math.cos(rad)
                 y = 400 + r * math.sin(rad)
-                color = planet_colors.get(sym, "#C0C0C0")
-                svg_parts.append(f'<circle cx="{x}" cy="{y}" r="20" fill="#0D1117" stroke="{color}" stroke-width="2.5" filter="url(#glow)"/>')
-                svg_parts.append(f'<text x="{x}" y="{y+7}" text-anchor="middle" fill="{color}" font-size="22" font-family="Arial, sans-serif">{sym}</text>')
-                svg_parts.append(f'<text x="{x}" y="{y-16}" text-anchor="middle" fill="#E5E7EB" font-size="10" font-family="Arial, sans-serif">{name[0]}</text>')
+                color = planet_colors.get(sym, "#FFFFFF")
+                svg_parts.append(f'<circle cx="{x}" cy="{y}" r="18" fill="#1a2a3a" stroke="{color}" stroke-width="2"/>')
+                svg_parts.append(f'<text x="{x}" y="{y+6}" text-anchor="middle" fill="{color}" font-size="20" font-family="Arial, sans-serif">{sym}</text>')
+                svg_parts.append(f'<text x="{x}" y="{y-14}" text-anchor="middle" fill="#E0E0E0" font-size="10" font-family="Arial, sans-serif">{name[0]}</text>')
             
-            # Асцендент – стрелка или текст
-            asc_angle = signs_ru.index(asc) * 30 - 90
-            rad_asc = math.radians(asc_angle)
-            r_asc = 280
-            x_asc = 400 + r_asc * math.cos(rad_asc)
-            y_asc = 400 + r_asc * math.sin(rad_asc)
-            svg_parts.append(f'<circle cx="{x_asc}" cy="{y_asc}" r="14" fill="#F59E0B" stroke="#FFFFFF" stroke-width="2"/>')
-            svg_parts.append(f'<text x="{x_asc}" y="{y_asc+5}" text-anchor="middle" fill="#0D1117" font-size="12" font-weight="bold">ASC</text>')
+            try:
+                asc_angle = signs_ru.index(asc) * 30 - 90
+                rad_asc = math.radians(asc_angle)
+                r_asc = 280
+                x_asc = 400 + r_asc * math.cos(rad_asc)
+                y_asc = 400 + r_asc * math.sin(rad_asc)
+                svg_parts.append(f'<circle cx="{x_asc}" cy="{y_asc}" r="14" fill="#FFD700" stroke="#FFFFFF" stroke-width="2"/>')
+                svg_parts.append(f'<text x="{x_asc}" y="{y_asc+5}" text-anchor="middle" fill="#1a2a3a" font-size="12" font-weight="bold">ASC</text>')
+            except:
+                pass
             
-            # Заголовок и информация
-            svg_parts.append(f'<text x="400" y="45" text-anchor="middle" fill="#F59E0B" font-size="24" font-weight="bold" font-family="Georgia, serif">✨ Натальная карта ✨</text>')
-            svg_parts.append(f'<text x="400" y="75" text-anchor="middle" fill="#E5E7EB" font-size="16" font-family="Arial, sans-serif">{info["name"]}</text>')
-            svg_parts.append(f'<text x="400" y="100" text-anchor="middle" fill="#8B5CF6" font-size="12" font-family="Arial, sans-serif">{info["date"]} {info["time"]} | {info["place"]}</text>')
-            svg_parts.append(f'<text x="400" y="770" text-anchor="middle" fill="#F59E0B" font-size="14" font-family="Arial, sans-serif">⬆ Асцендент: {asc}</text>')
-            
-            # Легенда
-            svg_parts.append('<g transform="translate(620, 580)">')
-            svg_parts.append('<rect x="0" y="0" width="160" height="160" rx="8" fill="#1F2937" opacity="0.9" stroke="#8B5CF6" stroke-width="1"/>')
-            svg_parts.append('<text x="80" y="20" text-anchor="middle" fill="#F59E0B" font-size="12" font-weight="bold">Легенда</text>')
-            svg_parts.append(f'<text x="15" y="45" fill="#FBBF24" font-size="14">☉</text><text x="35" y="48" fill="#E5E7EB" font-size="11">Солнце ({sun_sign})</text>')
-            svg_parts.append(f'<text x="15" y="70" fill="#E5E7EB" font-size="14">⬆</text><text x="35" y="73" fill="#E5E7EB" font-size="11">Асцендент ({asc})</text>')
-            svg_parts.append('<text x="80" y="150" text-anchor="middle" fill="#E5E7EB" font-size="10">AstroBot</text>')
-            svg_parts.append('</g>')
-            
+            svg_parts.append(f'<text x="400" y="45" text-anchor="middle" fill="#FFD700" font-size="24" font-weight="bold" font-family="Georgia, serif">✨ Натальная карта ✨</text>')
+            svg_parts.append(f'<text x="400" y="75" text-anchor="middle" fill="#FFFFFF" font-size="16" font-family="Arial, sans-serif">{info["name"]}</text>')
+            svg_parts.append(f'<text x="400" y="100" text-anchor="middle" fill="#c9a959" font-size="12" font-family="Arial, sans-serif">{info["date"]} {info["time"]} | {info["place"]}</text>')
+            svg_parts.append(f'<text x="400" y="760" text-anchor="middle" fill="#FFD700" font-size="14" font-family="Arial, sans-serif">⬆ Асцендент: {asc}</text>')
             svg_parts.append('</svg>')
             
             svg_content = "".join(svg_parts)
-            with open(filename, 'w', encoding='utf-8') as f:
+            with open(svg_filename, 'w', encoding='utf-8') as f:
                 f.write(svg_content)
-            return filename
+            
+            # 2. Конвертируем SVG в PNG с помощью cairosvg
+            png_filename = svg_filename.replace('.svg', '.png')
+            try:
+                import cairosvg
+                cairosvg.svg2png(url=svg_filename, write_to=png_filename, scale=1.5)
+                os.remove(svg_filename)
+                return png_filename
+            except ImportError:
+                logger.warning("cairosvg не установлен, отправляем SVG (может не открыться на телефоне)")
+                return svg_filename
+            except Exception as e:
+                logger.error(f"Ошибка конвертации SVG в PNG: {e}")
+                return svg_filename
+                
         except Exception as e:
-            logger.error(f"Ошибка генерации SVG: {e}")
+            logger.error(f"Ошибка генерации карты: {e}")
+            if svg_filename and os.path.exists(svg_filename):
+                os.remove(svg_filename)
+            if png_filename and os.path.exists(png_filename):
+                os.remove(png_filename)
             return None
     
     def generate_report_text(self, chart_data: Dict[str, Any]) -> str:
