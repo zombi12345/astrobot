@@ -4,7 +4,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from config import ADMINS
-from database.db import UserDB
+from database.db import get_user, get_stats, set_subscription, add_payment, is_paid
 from datetime import datetime, timedelta
 import logging
 import asyncio
@@ -13,14 +13,11 @@ import os
 logger = logging.getLogger(__name__)
 router = Router()
 
-# Состояния для FSM
 class AdminStates(StatesGroup):
     waiting_broadcast = State()
     waiting_user_id = State()
     waiting_subscription_days = State()
     waiting_search = State()
-
-# ==================== ГЛАВНОЕ МЕНЮ ====================
 
 async def show_admin_panel(target):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -31,9 +28,7 @@ async def show_admin_panel(target):
         [InlineKeyboardButton(text="📦 Экспорт БД", callback_data="admin_export")],
         [InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")]
     ])
-    
     text = "👑 **Админ-панель**\n\nВыберите действие:"
-    
     if isinstance(target, Message):
         await target.answer(text, reply_markup=keyboard, parse_mode="Markdown")
     else:
@@ -53,28 +48,20 @@ async def admin_panel_callback(callback: CallbackQuery):
         return
     await show_admin_panel(callback)
 
-# ==================== СТАТИСТИКА ====================
-
 @router.callback_query(F.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
-    
-    stats = await UserDB.get_stats()
-    
+    stats = await get_stats()
     from database.db import DB_PATH
     import aiosqlite
-    
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT COUNT(*) FROM requests")
         total_requests = (await cur.fetchone())[0]
-        
         cur = await db.execute("SELECT COUNT(*) FROM requests WHERE created_at > datetime('now', 'start of day')")
         today_requests = (await cur.fetchone())[0]
-        
         cur = await db.execute("SELECT COUNT(*) FROM users WHERE created_at > datetime('now', '-7 days')")
         new_last_week = (await cur.fetchone())[0]
-    
     text = f"""📊 **СТАТИСТИКА**
 
 👥 **Пользователи:**
@@ -88,23 +75,17 @@ async def admin_stats(callback: CallbackQuery):
 • За сегодня: {today_requests}
 
 📅 **Дата:** {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
     ])
-    
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
-
-# ==================== ПОЛЬЗОВАТЕЛИ ====================
 
 @router.callback_query(F.data == "admin_users")
 async def admin_users(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
-    
     from database.db import DB_PATH
     import aiosqlite
-    
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute(
@@ -112,30 +93,25 @@ async def admin_users(callback: CallbackQuery):
             "FROM users ORDER BY created_at DESC LIMIT 10"
         )
         users = await cur.fetchall()
-    
     if not users:
         await callback.message.edit_text("Нет пользователей")
         return
-    
     text = "👥 **Последние 10 пользователей:**\n\n"
     for i, user in enumerate(users, 1):
         status = "💎" if user['is_paid'] else "🆓"
         name = user['first_name'] or user['username'] or str(user['user_id'])
         created = user['created_at'][:10] if user['created_at'] else "?"
         text += f"{i}. {status} `{user['user_id']}` - {name}\n   📅 {created}\n"
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔍 Поиск по ID", callback_data="admin_search_user")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
     ])
-    
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 @router.callback_query(F.data == "admin_search_user")
 async def admin_search_user(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMINS:
         return
-    
     await callback.message.edit_text(
         "🔍 **Поиск пользователя**\n\nВведите ID пользователя:",
         parse_mode="Markdown"
@@ -146,17 +122,14 @@ async def admin_search_user(callback: CallbackQuery, state: FSMContext):
 async def process_user_search(message: Message, state: FSMContext):
     if message.from_user.id not in ADMINS:
         return
-    
     try:
         user_id = int(message.text.strip())
-        user_data = await UserDB.get_user(user_id)
-        
+        user_data = await get_user(user_id)
         if not user_data:
             await message.answer("❌ Пользователь не найден")
             await state.clear()
             await show_admin_panel(message)
             return
-        
         text = f"""👤 **Информация о пользователе**
 
 🆔 ID: `{user_data['user_id']}`
@@ -167,36 +140,26 @@ async def process_user_search(message: Message, state: FSMContext):
 📅 Подписка до: {user_data.get('subscription_end', 'Не активна')}
 
 📅 Регистрация: {user_data.get('created_at', 'Неизвестно')[:10]}"""
-        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="➕ Добавить подписку", callback_data=f"add_sub_{user_id}")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
         ])
-        
         await message.answer(text, parse_mode="Markdown", reply_markup=keyboard)
-        
     except ValueError:
         await message.answer("❌ Неверный формат ID. Введите число.")
-    
     await state.clear()
-
-# ==================== ПОДПИСКИ ====================
 
 @router.callback_query(F.data == "admin_subs")
 async def admin_subs(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
-    
     from database.db import DB_PATH
     import aiosqlite
-    
     today = datetime.now().strftime('%Y-%m-%d')
     next_week = (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')
-    
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT COUNT(*) FROM users WHERE is_paid = 1")
         paid_count = (await cur.fetchone())[0]
-        
         cur = await db.execute(
             "SELECT user_id, first_name, username, subscription_end "
             "FROM users WHERE is_paid = 1 AND subscription_end BETWEEN ? AND ? "
@@ -204,10 +167,7 @@ async def admin_subs(callback: CallbackQuery):
             (today, next_week)
         )
         expiring = await cur.fetchall()
-    
-    text = f"💎 **Управление подписками**\n\n"
-    text += f"👥 Активных подписок: {paid_count}\n\n"
-    
+    text = f"💎 **Управление подписками**\n\n👥 Активных подписок: {paid_count}\n\n"
     if expiring:
         text += "⚠️ **Истекают в ближайшие 7 дней:**\n"
         for user in expiring:
@@ -216,19 +176,16 @@ async def admin_subs(callback: CallbackQuery):
             text += f"• `{user[0]}` - {name}\n  📅 до {end}\n"
     else:
         text += "✅ Нет подписок, истекающих в ближайшие 7 дней"
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Выдать подписку", callback_data="admin_give_sub")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_back")]
     ])
-    
     await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 @router.callback_query(F.data == "admin_give_sub")
 async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMINS:
         return
-    
     await callback.message.edit_text(
         "➕ **Выдача подписки**\n\nВведите ID пользователя:",
         parse_mode="Markdown"
@@ -239,20 +196,16 @@ async def admin_give_sub_start(callback: CallbackQuery, state: FSMContext):
 async def process_user_id_for_sub(message: Message, state: FSMContext):
     if message.from_user.id not in ADMINS:
         return
-    
     try:
         user_id = int(message.text.strip())
-        user_data = await UserDB.get_user(user_id)
-        
+        user_data = await get_user(user_id)
         if not user_data:
             await message.answer("❌ Пользователь не найден")
             await state.clear()
             await show_admin_panel(message)
             return
-        
         await state.update_data(user_id=user_id)
         await state.set_state(AdminStates.waiting_subscription_days)
-        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="7 дней", callback_data="sub_7")],
             [InlineKeyboardButton(text="30 дней", callback_data="sub_30")],
@@ -260,12 +213,10 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
             [InlineKeyboardButton(text="365 дней", callback_data="sub_365")],
             [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")]
         ])
-        
         await message.answer(
             f"👤 Пользователь: {user_data.get('first_name', user_id)}\n\nВыберите срок подписки:",
             reply_markup=keyboard
         )
-        
     except ValueError:
         await message.answer("❌ Неверный формат ID. Введите число.")
 
@@ -273,21 +224,17 @@ async def process_user_id_for_sub(message: Message, state: FSMContext):
 async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
     days_map = {"sub_7": 7, "sub_30": 30, "sub_90": 90, "sub_365": 365}
     days = days_map.get(callback.data, 7)
-    
     data = await state.get_data()
     user_id = data.get('user_id')
-    
     if user_id:
-        await UserDB.set_subscription(user_id, days)
+        await set_subscription(user_id, days)
         end_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d')
-        
         await callback.message.edit_text(
             f"✅ Подписка активирована!\n\n"
             f"👤 Пользователь: {user_id}\n"
             f"📅 Дней: {days}\n"
             f"🗓️ Действует до: {end_date}"
         )
-        
         from loader import bot
         try:
             await bot.send_message(
@@ -300,7 +247,6 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
             )
         except:
             pass
-    
     await state.clear()
     await show_admin_panel(callback)
 
@@ -308,11 +254,9 @@ async def process_subscription_days(callback: CallbackQuery, state: FSMContext):
 async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMINS:
         return
-    
     user_id = int(callback.data.split("_")[2])
     await state.update_data(user_id=user_id)
     await state.set_state(AdminStates.waiting_subscription_days)
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="7 дней", callback_data="sub_7")],
         [InlineKeyboardButton(text="30 дней", callback_data="sub_30")],
@@ -320,19 +264,15 @@ async def add_sub_from_user(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="365 дней", callback_data="sub_365")],
         [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin_back")]
     ])
-    
     await callback.message.edit_text(
         f"👤 Пользователь: {user_id}\n\nВыберите срок подписки:",
         reply_markup=keyboard
     )
 
-# ==================== РАССЫЛКА ====================
-
 @router.callback_query(F.data == "admin_broadcast")
 async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMINS:
         return
-    
     await callback.message.edit_text(
         "📢 **Рассылка**\n\n"
         "Введите текст сообщения для рассылки всем пользователям.\n\n"
@@ -346,30 +286,21 @@ async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
 async def process_broadcast(message: Message, state: FSMContext):
     if message.from_user.id not in ADMINS:
         return
-    
     text = message.text
-    
     if text == "/cancel":
         await state.clear()
         await show_admin_panel(message)
         return
-    
     await state.clear()
-    
     from database.db import DB_PATH
     import aiosqlite
-    
     msg = await message.answer("📢 Начинаю рассылку...")
-    
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute("SELECT user_id FROM users")
         users = await cur.fetchall()
-    
     success = 0
     fail = 0
-    
     from loader import bot
-    
     for (user_id,) in users:
         try:
             await bot.send_message(user_id, text, parse_mode="Markdown")
@@ -377,31 +308,23 @@ async def process_broadcast(message: Message, state: FSMContext):
             await asyncio.sleep(0.05)
         except:
             fail += 1
-    
     await msg.edit_text(
         f"✅ **Рассылка завершена**\n\n"
         f"📤 Отправлено: {success}\n"
         f"❌ Не доставлено: {fail}\n"
         f"📊 Всего: {success + fail}"
     )
-    
     await show_admin_panel(message)
-
-# ==================== ЭКСПОРТ БД ====================
 
 @router.callback_query(F.data == "admin_export")
 async def admin_export(callback: CallbackQuery):
     if callback.from_user.id not in ADMINS:
         return
-    
     from database.db import DB_PATH
-    
     if not os.path.exists(DB_PATH):
         await callback.message.edit_text("❌ База данных не найдена")
         return
-    
     await callback.message.edit_text("📦 Подготавливаю экспорт...")
-    
     with open(DB_PATH, "rb") as f:
         await callback.message.answer_document(
             f,
@@ -409,11 +332,8 @@ async def admin_export(callback: CallbackQuery):
                    f"📅 {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
                    f"📊 Размер: {os.path.getsize(DB_PATH) / 1024:.1f} KB"
         )
-    
     await callback.message.answer("✅ Экспорт выполнен")
     await show_admin_panel(callback)
-
-# ==================== НАЗАД ====================
 
 @router.callback_query(F.data == "admin_back")
 async def admin_back(callback: CallbackQuery):
