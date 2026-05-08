@@ -5,7 +5,7 @@ from states import NatalChartStates
 from services.natal_service import natal_service
 from services.pdf_generator import pdf_gen
 from keyboards.main import natal_options_keyboard, main_menu_keyboard, back_to_menu_keyboard
-from database.db import UserDB
+from database.db import get_user, update_birth_data
 from utils import md2_escape
 import os
 import logging
@@ -77,7 +77,7 @@ async def natal_finish(message: Message, state: FSMContext):
         )
         user_id = message.from_user.id
         last_chart_cache[user_id] = chart_data
-        await UserDB.update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
+        aawait update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
         await processing_msg.delete()
         
         # Генерируем PNG/изображение
@@ -109,7 +109,7 @@ async def pdf_natal_from_chart(callback: CallbackQuery):
     user_id = callback.from_user.id
     chart_data = last_chart_cache.get(user_id)
     if not chart_data:
-        user_data = await UserDB.get_user(user_id)
+        user_data = await get_user(user_id)
         if not user_data or not user_data.get('birth_date'):
             await callback.message.edit_text("❌ Нужны данные о рождении. Сначала создайте натальную карту.", reply_markup=back_to_menu_keyboard())
             return
