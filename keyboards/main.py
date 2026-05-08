@@ -8,9 +8,9 @@ def welcome_keyboard():
 
 def payment_keyboard():
     kb = InlineKeyboardBuilder()
-    kb.button(text="🔥 7 дней — 299₽", callback_data="pay_7")
-    kb.button(text="💎 30 дней — 999₽", callback_data="pay_30")
-    kb.button(text="👑 90 дней — 2499₽", callback_data="pay_90")
+    kb.button(text="🔥 7 дней — 299⭐️", callback_data="pay_7")
+    kb.button(text="💎 30 дней — 999⭐️", callback_data="pay_30")
+    kb.button(text="👑 90 дней — 2599⭐️", callback_data="pay_90")
     kb.adjust(1)
     return kb.as_markup()
 
@@ -22,12 +22,12 @@ def main_menu_keyboard(user_id):
     kb.button(text="💕 Совместимость", callback_data="compatibility")
     kb.button(text="👤 Профиль", callback_data="profile")
     kb.button(text="📄 PDF отчёт", callback_data="generate_pdf")
-    
     if user_id in ADMINS:
         kb.button(text="👑 Админ-панель", callback_data="admin_panel")
-    
     kb.adjust(2)
     return kb.as_markup()
+
+# Остальные клавиатуры без изменений...
 
 def natal_options_keyboard():
     kb = InlineKeyboardBuilder()
