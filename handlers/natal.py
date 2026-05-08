@@ -77,7 +77,7 @@ async def natal_finish(message: Message, state: FSMContext):
         )
         user_id = message.from_user.id
         last_chart_cache[user_id] = chart_data
-        aawait update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
+        await update_birth_data(user_id, data['birth_date'], data['birth_time'], data['birth_place'])
         await processing_msg.delete()
         
         # Генерируем PNG/изображение
