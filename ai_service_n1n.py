@@ -5,7 +5,7 @@ import asyncio
 import re
 from typing import Optional, Dict, Any
 from config import N1N_API_KEY, N1N_BASE_URL
-from database.db import UserDB
+from database.db import get_user
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ class N1NService:
         """Обрабатывает вопрос пользователя с контекстом"""
         try:
             # Получаем данные пользователя
-            user_data = await UserDB.get_user(user_id)
+            user_data = await get_user(user_id)
             
             # Определяем тип вопроса
             question_lower = question.lower()
