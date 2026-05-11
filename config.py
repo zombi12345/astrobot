@@ -5,11 +5,13 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
-
-# ВАЖНО: замените 1079935212 на ваш реальный Telegram ID
 ADMINS = [int(os.getenv('ADMIN_ID', 1079935212))]
 
+# Путь к SQLite (если ещё используется где-то)
 DB_PATH = 'astro.db'
+
+# PostgreSQL для Supabase (обязательно)
+DATABASE_URL = os.getenv('DATABASE_URL', '')
 
 # Настройки n1n.ai
 N1N_API_KEY = os.getenv('N1N_API_KEY', OPENROUTER_API_KEY)
