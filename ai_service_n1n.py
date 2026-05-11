@@ -5,7 +5,7 @@ import asyncio
 import re
 from typing import Optional, Dict, Any
 from config import N1N_API_KEY, N1N_BASE_URL
-from database.db import get_user
+from database.postgres_db import get_user
 from datetime import datetime
 
 logger = logging.getLogger(__name__)

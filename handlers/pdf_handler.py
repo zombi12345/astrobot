@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile
 from services.pdf_generator import pdf_gen
 from keyboards.main import pdf_type_keyboard, back_to_menu_keyboard, main_menu_keyboard
-from database.db import get_user, update_birth_data  # вместо UserDB
+from database.postgres_db import get_user, update_birth_data  # вместо UserDB
 from ai_service_n1n import ai_service
 import logging
 import os

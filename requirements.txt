@@ -9,3 +9,4 @@ flask[async]>=2.3.0
 matplotlib==3.9.2
 vedastro>=0.1.0
 cairosvg>=2.7.0
+asyncpg-lite

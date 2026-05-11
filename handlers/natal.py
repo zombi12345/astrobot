@@ -5,7 +5,7 @@ from states import NatalChartStates
 from services.natal_service import natal_service
 from services.pdf_generator import pdf_gen
 from keyboards.main import natal_options_keyboard, main_menu_keyboard, back_to_menu_keyboard
-from database.db import get_user, update_birth_data
+from database.postgres_db import get_user, update_birth_data
 from utils import md2_escape
 import os
 import logging

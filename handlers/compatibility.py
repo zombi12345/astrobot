@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from keyboards.main import back_to_menu_keyboard, main_menu_keyboard
-from database.db import is_paid
+from database.postgres_db import is_paid
 from astrology_calculator import AstrologyCalculator
 import random
 import hashlib
