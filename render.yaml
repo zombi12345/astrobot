@@ -3,5 +3,5 @@ services:
     name: astrobot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    startCommand: ./startup.sh
     plan: free
