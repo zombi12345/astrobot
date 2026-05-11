@@ -143,7 +143,7 @@ def get_detailed_compatibility(sign1, sign2):
 @router.callback_query(F.data == "compatibility")
 async def compatibility_start(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
-    if not await is_paid(user_id):
+    if user_id not in ADMINS and not await is_paid(user_id):
         await callback.message.edit_text(
             "❌ Функция «Совместимость» доступна только по подписке.\n\n"
             "Оформите подписку, чтобы пользоваться всеми возможностями бота.",
