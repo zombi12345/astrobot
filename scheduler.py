@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 async def send_morning_message(bot: Bot):
     """Отправка утреннего гороскопа"""
-    from database.db import UserDB
+    from database.postgres_db import UserDB
     from config import ADMINS
 
     text = "🌅 Доброе утро! Ваш гороскоп на сегодня готов!"

@@ -2,7 +2,7 @@ import httpx
 import logging
 import asyncio
 from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL
-from database.db import UserDB
+from database.postgres_db import UserDB
 
 logger = logging.getLogger(__name__)
 

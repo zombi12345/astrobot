@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message
 from aiogram.fsm.context import FSMContext
-from database.db import get_user, update_birth_data
+from database.postgres_db import get_user, update_birth_data
 from keyboards.main import profile_keyboard, back_to_menu_keyboard
 from states import ProfileEditStates
 from datetime import datetime
