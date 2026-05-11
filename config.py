@@ -7,12 +7,12 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 ADMINS = [int(os.getenv('ADMIN_ID', 1079935212))]
 
-# Путь к SQLite (если ещё используется где-то)
-DB_PATH = 'astro.db'
-
-# PostgreSQL для Supabase (обязательно)
-DATABASE_URL = os.getenv('DATABASE_URL', '')
-
+# PostgreSQL параметры (для Supabase)
+DB_HOST = os.getenv('DB_HOST', '')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_USER = os.getenv('DB_USER', '')
+DB_PASSWORD = os.getenv('DB_PASSWORD', '')
+DB_NAME = os.getenv('DB_NAME', 'postgres')
 # Настройки n1n.ai
 N1N_API_KEY = os.getenv('N1N_API_KEY', OPENROUTER_API_KEY)
 N1N_BASE_URL = 'https://api.n1n.ai/v1'

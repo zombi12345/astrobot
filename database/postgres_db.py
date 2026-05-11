@@ -1,6 +1,6 @@
 import asyncpg
 import logging
-from config import DATABASE_URL
+from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -10,8 +10,16 @@ class Database:
     @classmethod
     async def create_pool(cls):
         if cls.pool is None:
-            cls.pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
-            logger.info("✅ Пул соединений с PostgreSQL создан.")
+            cls.pool = await asyncpg.create_pool(
+                host=DB_HOST,
+                port=DB_PORT,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                database=DB_NAME,
+                min_size=1,
+                max_size=10
+            )
+            logger.info("✅ Пул соединений с PostgreSQL создан (по параметрам).")
         return cls.pool
 
     @classmethod
@@ -57,7 +65,9 @@ async def init_postgres_db():
         ''')
     print("✅ Таблицы в PostgreSQL созданы/обновлены")
 
-# ---- Функции для работы с БД ----
+# ---- Все функции работы с БД (create_user, get_user, update_birth_data, set_subscription, is_paid, has_trial_used, set_trial_used, add_payment, get_stats) ----
+# Они остаются точно такими же, как в предыдущем исправленном файле. Скопируйте их из моего предыдущего сообщения (где был asyncpg).
+# Чтобы не повторять, привожу их ещё раз:
 async def create_user(user_id: int, username: str = "", first_name: str = ""):
     pool = await db.create_pool()
     async with pool.acquire() as conn:
@@ -70,8 +80,7 @@ async def create_user(user_id: int, username: str = "", first_name: str = ""):
 async def get_user(user_id: int):
     pool = await db.create_pool()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow('SELECT * FROM users WHERE user_id = $1', user_id)
-    return row
+        return await conn.fetchrow('SELECT * FROM users WHERE user_id = $1', user_id)
 
 async def update_birth_data(user_id: int, birth_date: str, birth_time: str, birth_place: str):
     pool = await db.create_pool()
